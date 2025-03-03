@@ -19,7 +19,8 @@ from .config import (
     LIQUIDITY_VOLATILITY_ADJUSTMENTS,
     MARKETS_TABLE,
     HISTORICAL_TABLE,
-    POSTS_TABLE
+    POSTS_TABLE,
+    TTL_DAYS
 )
 
 def get_dynamodb_client():
