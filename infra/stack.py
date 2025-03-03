@@ -40,7 +40,7 @@ class PolyMarketStack(Stack):
             self,
             "MarketsTable",
             table_name="PolymarketMarkets",
-            partition_key=dynamodb.Attribute(name="id", type=dynamodb.AttributeType.NUMBER),
+            partition_key=dynamodb.Attribute(name="id", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
@@ -50,7 +50,7 @@ class PolyMarketStack(Stack):
             self,
             "HistoricalTable",
             table_name="PolymarketHistorical",
-            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.NUMBER),
+            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="timestamp", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
