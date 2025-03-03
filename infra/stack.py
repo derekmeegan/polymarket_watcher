@@ -122,7 +122,7 @@ class PolyMarketStack(Stack):
             index="collector/collector.py",
             handler="lambda_handler",
             runtime=lambda_.Runtime.PYTHON_3_9,
-            timeout=Duration.seconds(180),
+            timeout=Duration.minutes(5),
             role=lambda_execution_role,
             environment={
                 "MARKETS_TABLE": markets_table.table_name,

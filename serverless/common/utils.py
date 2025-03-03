@@ -347,7 +347,7 @@ def save_market_to_dynamodb(market):
             'image': market.get('image'),
             'closed': market.get('closed'),
             'submitted_by': market.get('submitted_by'),
-            'volume24hr': market.get('volume24hr'),
+            'volume24hr': Decimal(str(market.get('volume24hr'))),
             'current_price': Decimal(str(current_price)),
             'tracked_outcome': tracked_outcome,
             'outcome_index': outcome_index,
