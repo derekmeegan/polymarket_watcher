@@ -42,13 +42,15 @@ def categorize_market(market):
     text = f"{question} {description}"
     
     # Check for each category of interest
-    for category in CATEGORIES_OF_INTEREST:
-        # Use word boundary to avoid partial matches
-        pattern = r'\b' + re.escape(category.lower()) + r'\b'
-        if re.search(pattern, text):
-            categories.append(category)
+    for category, keywords in CATEGORIES_OF_INTEREST.items():
+        for keyword in keywords:
+            # Use word boundary to avoid partial matches
+            pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+            if re.search(pattern, text):
+                categories.append(category)
+                break  # Once we've matched a category, no need to check other keywords
     
-    return categories
+    return list(set(categories))  # Remove duplicates
 
 def get_liquidity_tier(liquidity):
     """
