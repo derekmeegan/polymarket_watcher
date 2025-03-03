@@ -139,43 +139,6 @@ def get_tracked_outcome_and_price(market):
         max_index = prices.index(max(prices))
         return outcomes[max_index], prices[max_index], max_index
 
-def save_market_to_dynamodb(market, table_name=MARKETS_TABLE):
-    """
-    Save a market to DynamoDB
-    """
-    try:
-        # Initialize DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(table_name)
-        
-        # Get the tracked outcome and price
-        tracked_outcome, current_price, outcome_index = get_tracked_outcome_and_price(market)
-        
-        if tracked_outcome is None or current_price is None:
-            return False
-        
-        # Convert float values to Decimal for DynamoDB
-        item = {
-            'id': market.get('id'),
-            'question': market.get('question'),
-            'slug': market.get('slug'),
-            'liquidity': Decimal(str(market.get('liquidity', 0))),
-            'volume': Decimal(str(market.get('volume', 0))),
-            'tracked_outcome': tracked_outcome,
-            'outcome_index': outcome_index,
-            'current_price': Decimal(str(current_price)),
-            'categories': categorize_market(market),
-            'timestamp': datetime.utcnow().isoformat(),
-            'end_date': market.get('endDate')
-        }
-        
-        # Save to DynamoDB
-        table.put_item(Item=item)
-        return True
-    except Exception as e:
-        print(f"Error saving market to DynamoDB: {e}")
-        return False
-
 def save_historical_price(market_id, outcome, price, outcome_index, table_name=HISTORICAL_TABLE):
     """
     Save a historical price point to DynamoDB
@@ -185,7 +148,7 @@ def save_historical_price(market_id, outcome, price, outcome_index, table_name=H
         dynamodb = get_dynamodb_client()
         table = dynamodb.Table(table_name)
         
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(datetime.timezone.utc).isoformat()
         
         # Create item
         item = {
@@ -194,7 +157,7 @@ def save_historical_price(market_id, outcome, price, outcome_index, table_name=H
             'outcome': outcome,
             'outcome_index': outcome_index,
             'price': Decimal(str(price)),
-            'ttl': int((datetime.utcnow() + timedelta(days=90)).timestamp())  # 90 day TTL
+            'ttl': int((datetime.now(datetime.timezone.utc) + timedelta(days=90)).timestamp())  # 90 day TTL
         }
         
         # Save to DynamoDB
@@ -361,42 +324,6 @@ def get_volatility_threshold(liquidity):
             return threshold['change_threshold']
     return VOLATILITY_THRESHOLDS[-1]['change_threshold']
 
-def categorize_market(market):
-    """Categorize a market based on its question and description"""
-    categories = []
-    question = market.get('question', '').lower()
-    description = market.get('description', '').lower()
-    
-    for category, keywords in CATEGORIES_OF_INTEREST.items():
-        for keyword in keywords:
-            if keyword.lower() in question or keyword.lower() in description:
-                categories.append(category)
-                break
-    
-    return list(set(categories))  # Remove duplicates
-
-def parse_outcomes_and_prices(market):
-    """Parse outcomes and prices from market data"""
-    return market.get('outcomes', []), market.get('outcomePrices', [])
-
-def get_tracked_outcome_and_price(market):
-    """Get the tracked outcome and its price from market data"""
-    outcomes, prices = parse_outcomes_and_prices(market)
-    outcomes = [o.lower() for o in outcomes]
-    
-    if not outcomes or not prices:
-        return None, None, None
-    
-    # For binary markets, track the "Yes" outcome
-    if len(outcomes) == 2 and ("yes" in outcomes or "no" in outcomes):
-        yes_index = outcomes.index("yes") if "yes" in outcomes else None
-        if yes_index is not None:
-            return "Yes", prices[yes_index], yes_index
-    
-    # For multi-outcome markets, track the outcome with highest probability
-    max_price_index = prices.index(max(prices))
-    return outcomes[max_price_index], prices[max_price_index], max_price_index
-
 def save_market_to_dynamodb(market):
     """Save market data to DynamoDB"""
     try:
@@ -437,99 +364,3 @@ def save_market_to_dynamodb(market):
     except Exception as e:
         print(f"Error saving market to DynamoDB: {e}")
         return False
-
-def save_historical_price(market_id, outcome, price, outcome_index):
-    """Save historical price data to DynamoDB"""
-    try:
-        # Prepare historical data for DynamoDB
-        historical_item = {
-            'id': market_id,
-            'timestamp': datetime.utcnow().isoformat(),
-            'outcome': outcome,
-            'outcome_index': outcome_index,
-            'price': Decimal(str(price)),
-            'ttl': calculate_ttl(TTL_DAYS['historical'])
-        }
-        
-        # Save to DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(HISTORICAL_TABLE)
-        table.put_item(Item=historical_item)
-        
-        return True
-    except Exception as e:
-        print(f"Error saving historical price to DynamoDB: {e}")
-        return False
-
-def get_last_post_time():
-    """Get the timestamp of the last post"""
-    try:
-        # Initialize DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(POSTS_TABLE)
-        
-        # Scan for the most recent post
-        response = table.scan(
-            Limit=1,
-            ScanIndexForward=False
-        )
-        
-        if response.get('Items'):
-            return response['Items'][0].get('timestamp')
-        
-        return None
-    except Exception as e:
-        print(f"Error getting last post time: {e}")
-        return None
-
-def generate_post_text(market, price_change, previous_price):
-    """Generate post text for a market update"""
-    question = market.get('question', '')
-    current_price = market.get('current_price', 0)
-    tracked_outcome = market.get('tracked_outcome', '')
-    liquidity = market.get('liquidity', 0)
-    
-    # Determine if price increased or decreased
-    change_direction = "increased" if current_price > previous_price else "decreased"
-    
-    # Create post text
-    post = f"Market Update: \"{question}\"\n\n"
-    
-    # Add outcome information for multi-outcome markets
-    if tracked_outcome and tracked_outcome not in ["Yes", "No"]:
-        post += f"Outcome \"{tracked_outcome}\" "
-    
-    # Add price change information
-    post += f"Probability has {change_direction} from {previous_price:.1%} to {current_price:.1%} ({abs(price_change) * 100:.1f}% swing)"
-    
-    # Add liquidity information
-    if liquidity:
-        post += f"\n\nMarket liquidity: ${liquidity:,.0f}"
-    
-    return post
-
-def save_post_to_dynamodb(market, tweet_id):
-    """Save post data to DynamoDB"""
-    try:
-        # Prepare post data for DynamoDB
-        post_item = {
-            'id': market.get('id'),
-            'timestamp': datetime.utcnow().isoformat(),
-            'question': market.get('question'),
-            'tracked_outcome': market.get('tracked_outcome'),
-            'current_price': Decimal(str(market.get('current_price', 0))),
-            'previous_price': Decimal(str(market.get('previous_price', 0))),
-            'price_change': Decimal(str(market.get('price_change', 0))),
-            'tweet_id': tweet_id,
-            'ttl': calculate_ttl(TTL_DAYS['posts'])
-        }
-        
-        # Save to DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(POSTS_TABLE)
-        table.put_item(Item=post_item)
-        
-        return post_item
-    except Exception as e:
-        print(f"Error saving post to DynamoDB: {e}")
-        return None

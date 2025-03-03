@@ -3,3 +3,4 @@ venv
 *.pyc
 */cdk.out/*
 */__pycache__
+*.ipynb
