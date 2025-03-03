@@ -4,7 +4,7 @@ Utility functions for the Polymarket Watcher
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
@@ -148,7 +148,7 @@ def save_historical_price(market_id, outcome, price, outcome_index, table_name=H
         dynamodb = get_dynamodb_client()
         table = dynamodb.Table(table_name)
         
-        timestamp = datetime.now(datetime.timezone.utc).isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         
         # Create item
         item = {
@@ -157,7 +157,7 @@ def save_historical_price(market_id, outcome, price, outcome_index, table_name=H
             'outcome': outcome,
             'outcome_index': outcome_index,
             'price': Decimal(str(price)),
-            'ttl': int((datetime.now(datetime.timezone.utc) + timedelta(days=90)).timestamp())  # 90 day TTL
+            'ttl': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())  # 90 day TTL
         }
         
         # Save to DynamoDB
@@ -351,7 +351,7 @@ def save_market_to_dynamodb(market):
             'tracked_outcome': tracked_outcome,
             'outcome_index': outcome_index,
             'categories': categorize_market(market),
-            'last_updated': datetime.now(datetime.timezone.utc).isoformat(),
+            'last_updated': datetime.now(timezone.utc).isoformat(),
             'ttl': calculate_ttl(TTL_DAYS['markets'])
         }
         
