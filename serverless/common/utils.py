@@ -382,13 +382,14 @@ def parse_outcomes_and_prices(market):
 def get_tracked_outcome_and_price(market):
     """Get the tracked outcome and its price from market data"""
     outcomes, prices = parse_outcomes_and_prices(market)
+    outcomes = [o.lower() for o in outcomes]
     
     if not outcomes or not prices:
         return None, None, None
     
     # For binary markets, track the "Yes" outcome
-    if len(outcomes) == 2 and ("yes" in outcomes or "no" in [o.lower() for o in outcomes]):
-        yes_index = outcomes.index("Yes") if "Yes" in outcomes else None
+    if len(outcomes) == 2 and ("yes" in outcomes or "no" in outcomes):
+        yes_index = outcomes.index("yes") if "yes" in outcomes else None
         if yes_index is not None:
             return "Yes", prices[yes_index], yes_index
     
