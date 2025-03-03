@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import os
 import aws_cdk as cdk
-from stack import MyServerlessStack
+from stack import PolyMarketStack
 
 app: cdk.App = cdk.App()
-MyServerlessStack(
+PolyMarketStack(
     app, 
     "PolyMarketStack",
     env=cdk.Environment(
