@@ -377,27 +377,7 @@ def categorize_market(market):
 
 def parse_outcomes_and_prices(market):
     """Parse outcomes and prices from market data"""
-    outcomes = market.get('outcomes', [])
-    
-    if not outcomes:
-        return [], []
-    
-    # Handle different outcome formats
-    outcome_names = []
-    prices = []
-    
-    for outcome in outcomes:
-        # Get outcome name
-        name = outcome.get('name')
-        if name:
-            outcome_names.append(name)
-        
-        # Get price
-        price = outcome.get('price')
-        if price is not None:
-            prices.append(float(price))
-    
-    return outcome_names, prices
+    return market.get('outcomes', []), market.get('outcomePrices', [])
 
 def get_tracked_outcome_and_price(market):
     """Get the tracked outcome and its price from market data"""
