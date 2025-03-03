@@ -153,7 +153,7 @@ def save_historical_price(market_id, outcome, price, outcome_index, table_name=H
         
         # Create item
         item = {
-            'id': market_id,
+            'market_id': market_id,
             'timestamp': timestamp,
             'outcome': outcome,
             'outcome_index': outcome_index,
