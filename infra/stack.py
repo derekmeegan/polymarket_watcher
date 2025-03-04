@@ -132,7 +132,7 @@ class PolyMarketStack(Stack):
             index="analyzer/analyzer.py",
             handler="lambda_handler",
             runtime=lambda_.Runtime.PYTHON_3_9,
-            timeout=Duration.seconds(60),
+            timeout=Duration.minutes(5),
             memory_size=256,
             role=lambda_execution_role,
             environment={
@@ -151,7 +151,7 @@ class PolyMarketStack(Stack):
             index="publisher/publisher.py",
             handler="lambda_handler",
             runtime=lambda_.Runtime.PYTHON_3_9,
-            timeout=Duration.seconds(120),
+            timeout=Duration.minutes(2),
             memory_size=256,
             role=lambda_execution_role,
             environment={
