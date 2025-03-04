@@ -157,12 +157,12 @@ def post_to_twitter(market_update, idx):
             print(f"Posted to Twitter: {post_text}")
         
         # Return tweet ID
-        return True
+        return True, post_text
     except Exception as e:
         if 'duplicate content' in str(e):
-            return True
+            return True, post_text
         print(f"Error posting to Twitter: {e}")
-        return None
+        return None, None
 
 def lambda_handler(event, context):
     """AWS Lambda handler function"""
@@ -196,16 +196,15 @@ def lambda_handler(event, context):
     
     for idx, market_update in enumerate(market_updates):
         # Post to Twitter
-        tweet_id = post_to_twitter(market_update, idx)
+        post_successful, post_content = post_to_twitter(market_update, idx)
         
-        if tweet_id:
+        if post_successful:
             # Save post to DynamoDB
-            post_record = save_post_to_dynamodb(market_update['id'])
+            post_record = save_post_to_dynamodb(market_update['id'], post_content)
             
             posts_made.append({
                 'market_id': market_update['id'],
                 'question': market_update['question'],
-                'tweet_id': tweet_id
             })
     
     execution_time = time.time() - start_time

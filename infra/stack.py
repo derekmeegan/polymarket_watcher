@@ -71,7 +71,7 @@ class PolyMarketStack(Stack):
             self,
             "PostsTable",
             table_name="PolymarketPosts",
-            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.NUMBER),
+            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="posted_at", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
