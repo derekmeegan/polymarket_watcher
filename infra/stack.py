@@ -1,19 +1,16 @@
 from aws_cdk import (
     aws_secretsmanager as secretsmanager,
     aws_iam as iam,
-    aws_ec2 as ec2,
     aws_lambda as lambda_,
     aws_dynamodb as dynamodb,
     aws_events as events,
     aws_events_targets as targets,
-    aws_ecr_assets as ecr_assets,
     aws_apigateway as apigateway,
     aws_sns as sns,
     aws_sns_subscriptions as sns_subscriptions,
     RemovalPolicy,
     Stack,
-    Duration,
-    StringParameter
+    Duration
 )
 from aws_cdk.aws_lambda_python_alpha import PythonFunction
 from aws_cdk.aws_s3 import Bucket
