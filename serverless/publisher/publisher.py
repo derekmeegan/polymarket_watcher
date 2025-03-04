@@ -22,19 +22,20 @@ from common.config import (
 from common.utils import save_post_to_dynamodb
 
 # Get Twitter API Secret ARNs from environment
-X_ACCESS_TOKEN_SECRET_ARN = os.environ.get('X_ACCESS_TOKEN_SECRET_ARN', '')
-X_ACCESS_TOKEN_SECRET_SECRET_ARN = os.environ.get('X_ACCESS_TOKEN_SECRET_SECRET_ARN', '')
-X_CONSUMER_KEY_SECRET_ARN = os.environ.get('X_CONSUMER_KEY_SECRET_ARN', '')
-X_CONSUMER_SECRET_SECRET_ARN = os.environ.get('X_CONSUMER_SECRET_SECRET_ARN', '')
+# Get Twitter API Secret Names from environment
+X_ACCESS_TOKEN_SECRET_NAME = os.environ.get('X_ACCESS_TOKEN_SECRET_NAME', 'polymarket/x-access-token')
+X_ACCESS_TOKEN_SECRET_SECRET_NAME = os.environ.get('X_ACCESS_TOKEN_SECRET_SECRET_NAME', 'polymarket/x-access-token-secret')
+X_CONSUMER_KEY_SECRET_NAME = os.environ.get('X_CONSUMER_KEY_SECRET_NAME', 'polymarket/x-consumer-key')
+X_CONSUMER_SECRET_SECRET_NAME = os.environ.get('X_CONSUMER_SECRET_SECRET_NAME', 'polymarket/x-consumer-secret')
 
-def get_secret_value(secret_arn):
+def get_secret_value(secret_name):
     """Retrieve a secret value from AWS Secrets Manager"""
     try:
         # Create a Secrets Manager client
         client = boto3.client(service_name='secretsmanager', region_name = 'us-east-1')
         
         # Get the secret value
-        response = client.get_secret_value(SecretId=secret_arn)
+        response = client.get_secret_value(SecretId=secret_name)
         
         # Return the secret string directly (not as JSON)
         return response['SecretString']
@@ -49,10 +50,10 @@ def get_twitter_credentials():
     """Retrieve Twitter API credentials from AWS Secrets Manager"""
     try:
         # Get each credential from its own secret
-        access_token = get_secret_value(X_ACCESS_TOKEN_SECRET_ARN)
-        access_token_secret = get_secret_value(X_ACCESS_TOKEN_SECRET_SECRET_ARN)
-        consumer_key = get_secret_value(X_CONSUMER_KEY_SECRET_ARN)
-        consumer_secret = get_secret_value(X_CONSUMER_SECRET_SECRET_ARN)
+        access_token = get_secret_value(X_ACCESS_TOKEN_SECRET_NAME)
+        access_token_secret = get_secret_value(X_ACCESS_TOKEN_SECRET_SECRET_NAME)
+        consumer_key = get_secret_value(X_CONSUMER_KEY_SECRET_NAME)
+        consumer_secret = get_secret_value(X_CONSUMER_SECRET_SECRET_NAME)
         
         # Check if all credentials were retrieved successfully
         if not all([access_token, access_token_secret, consumer_key, consumer_secret]):
@@ -75,10 +76,10 @@ def get_twitter_client():
     try:
         # Get Twitter credentials from Secrets Manager
         print(f"Retrieving Twitter credentials from Secrets Manager...")
-        print(f"X_ACCESS_TOKEN_SECRET_ARN: {X_ACCESS_TOKEN_SECRET_ARN}")
-        print(f"X_ACCESS_TOKEN_SECRET_SECRET_ARN: {X_ACCESS_TOKEN_SECRET_SECRET_ARN}")
-        print(f"X_CONSUMER_KEY_SECRET_ARN: {X_CONSUMER_KEY_SECRET_ARN}")
-        print(f"X_CONSUMER_SECRET_SECRET_ARN: {X_CONSUMER_SECRET_SECRET_ARN}")
+        print(f"X_ACCESS_TOKEN_SECRET_NAME: {X_ACCESS_TOKEN_SECRET_NAME}")
+        print(f"X_ACCESS_TOKEN_SECRET_SECRET_NAME: {X_ACCESS_TOKEN_SECRET_SECRET_NAME}")
+        print(f"X_CONSUMER_KEY_SECRET_NAME: {X_CONSUMER_KEY_SECRET_NAME}")
+        print(f"X_CONSUMER_SECRET_SECRET_NAME: {X_CONSUMER_SECRET_SECRET_NAME}")
         
         credentials = get_twitter_credentials()
         

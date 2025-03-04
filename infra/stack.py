@@ -157,6 +157,7 @@ class PolyMarketStack(Stack):
         )
         market_movements_topic.grant_publish(analyzer_lambda)
 
+        # Publisher Lambda
         publisher_lambda = PythonFunction(
             self,
             "PublisherFunction",
@@ -171,10 +172,10 @@ class PolyMarketStack(Stack):
                 "MARKETS_TABLE": markets_table.table_name,
                 "HISTORICAL_TABLE": historical_table.table_name,
                 "POSTS_TABLE": posts_table.table_name,
-                "X_ACCESS_TOKEN_SECRET_ARN": x_access_token_secret.secret_arn,
-                "X_ACCESS_TOKEN_SECRET_SECRET_ARN": x_access_token_secret_secret.secret_arn,
-                "X_CONSUMER_KEY_SECRET_ARN": x_consumer_key_secret.secret_arn,
-                "X_CONSUMER_SECRET_SECRET_ARN": x_consumer_secret_secret.secret_arn
+                "X_ACCESS_TOKEN_SECRET_NAME": "polymarket/x-access-token",
+                "X_ACCESS_TOKEN_SECRET_SECRET_NAME": "polymarket/x-access-token-secret",
+                "X_CONSUMER_KEY_SECRET_NAME": "polymarket/x-consumer-key",
+                "X_CONSUMER_SECRET_SECRET_NAME": "polymarket/x-consumer-secret"
             }
         )
         
