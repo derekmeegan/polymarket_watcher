@@ -91,6 +91,30 @@ def get_twitter_client():
         print(f"Error initializing Twitter client: {e}")
         return None
 
+def generate_post_text(market_update, price_change, previous_price, max_length=280):
+    """Generate post text for a market update"""
+    question = market_update['question']
+    current_price = market_update['current_price']
+    outcome = market_update['tracked_outcome']
+    
+    # Format price as percentage
+    current_pct = f"{current_price * 100:.1f}%"
+    previous_pct = f"{previous_price * 100:.1f}%"
+    change_direction = "↑" if current_price > previous_price else "↓"
+    change_pct = f"{abs(price_change) * 100:.1f}%"
+    
+    # Truncate question if too long
+    max_question_length = 180
+    if len(question) > max_question_length:
+        question = question[:max_question_length-3] + "..."
+    
+    # Create post text
+    post_text = f"📊 {question}\n\n"
+    post_text += f"Outcome: {outcome}\n"
+    post_text += f"Price: {current_pct} ({change_direction}{change_pct} from {previous_pct})"
+    
+    return post_text
+
 def post_to_twitter(market_update):
     """Post a market update to Twitter"""
     try:
