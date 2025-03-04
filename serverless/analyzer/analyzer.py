@@ -7,9 +7,8 @@ It runs after the collector Lambda and triggers the publisher Lambda when signif
 
 import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from pytz import timezone
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -24,12 +23,20 @@ from common.config import (
 from common.utils import (
     get_dynamodb_client,
     calculate_price_change,
-    get_volatility_threshold,
-    get_last_post_time
+    get_volatility_threshold
 )
 
 # Get SNS topic ARN from environment
 MARKET_MOVEMENTS_TOPIC_ARN = os.environ.get('MARKET_MOVEMENTS_TOPIC_ARN')
+
+def is_within_active_hours():
+    """Check if current time is within active hours (9 AM to 7 PM EST)"""
+    # Get current time in EST
+    est_tz = timezone('US/Eastern')
+    current_time = datetime.now(est_tz)
+    
+    # Check if time is between 9 AM and 7 PM
+    return 9 <= current_time.hour < 19
 
 def get_current_markets():
     """Get all markets from DynamoDB"""
@@ -235,6 +242,14 @@ def publish_top_movers_to_sns(significant_changes, max_markets=10):
 def lambda_handler(event, context):
     """AWS Lambda handler function"""
     print("Starting market analysis...")
+    if not is_within_active_hours() and not event.get('ignore_time_filter', False):
+        print("Current time is outside active hours (9 AM to 7 PM EST). Skipping execution.")
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'Execution skipped - outside active hours'
+            })
+        }
     
     # Get all markets from DynamoDB
     markets = get_current_markets()

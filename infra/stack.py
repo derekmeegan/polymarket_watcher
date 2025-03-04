@@ -188,7 +188,7 @@ class PolyMarketStack(Stack):
         collector_schedule = events.Rule(
             self,
             "CollectorSchedule",
-            schedule=events.Schedule.rate(Duration.minutes(5)),
+            schedule=events.Schedule.rate(Duration.minutes(20)),
             targets=[targets.LambdaFunction(collector_lambda)]
         )
 
@@ -196,7 +196,7 @@ class PolyMarketStack(Stack):
         analyzer_schedule = events.Rule(
             self,
             "AnalyzerSchedule",
-            schedule=events.Schedule.rate(Duration.minutes(80)),
+            schedule=events.Schedule.rate(Duration.minutes(36)),
             targets=[targets.LambdaFunction(analyzer_lambda)]
         )
 
