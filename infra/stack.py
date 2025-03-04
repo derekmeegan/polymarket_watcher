@@ -13,8 +13,6 @@ from aws_cdk import (
     Duration
 )
 from aws_cdk.aws_lambda_python_alpha import PythonFunction
-from aws_cdk.aws_s3 import Bucket
-from aws_cdk.aws_lambda import BundlingOptions
 from constructs import Construct
 
 
