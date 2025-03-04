@@ -7,6 +7,7 @@ It runs on a schedule (every 5 minutes) to keep the market data up to date.
 
 import json
 import os
+import time
 from datetime import datetime, timezone, timedelta
 
 import boto3
