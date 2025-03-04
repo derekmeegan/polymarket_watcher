@@ -87,6 +87,20 @@ class PolyMarketStack(Stack):
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
             ]
         )   
+        
+        # Add explicit permissions for Secrets Manager
+        lambda_execution_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:polymarket/x-access-token*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:polymarket/x-access-token-secret*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:polymarket/x-consumer-key*",
+                    f"arn:aws:secretsmanager:{self.region}:{self.account}:secret:polymarket/x-consumer-secret*"
+                ]
+            )
+        )
+        
         # Add DynamoDB permissions
         markets_table.grant_read_write_data(lambda_execution_role)
         historical_table.grant_read_write_data(lambda_execution_role)
