@@ -129,7 +129,7 @@ def generate_post_text(market_update, price_change, previous_price, max_length=2
     
     return post_text
 
-def post_to_twitter(market_update):
+def post_to_twitter(market_update, idx):
     """Post a market update to Twitter"""
     try:
         # Generate post text
@@ -144,16 +144,17 @@ def post_to_twitter(market_update):
         post_text += f"\n\n{market_url}"
         
         # Initialize Twitter client
-        twitter = get_twitter_client()
-        
-        if not twitter:
-            print("Failed to initialize Twitter client")
-            return None
-        
-        # Post to Twitter
-        tweet = twitter.create_tweet(text = post_text)
-        
-        print(f"Posted to Twitter: {post_text}")
+        if idx == 0:
+            twitter = get_twitter_client()
+            
+            if not twitter:
+                print("Failed to initialize Twitter client")
+                return None
+            
+            # Post to Twitter
+            tweet = twitter.create_tweet(text = post_text)
+            
+            print(f"Posted to Twitter: {post_text}")
         
         # Return tweet ID
         return True
@@ -193,9 +194,9 @@ def lambda_handler(event, context):
     # Process each market update
     posts_made = []
     
-    for market_update in market_updates:
+    for idx, market_update in enumerate(market_updates):
         # Post to Twitter
-        tweet_id = post_to_twitter(market_update)
+        tweet_id = post_to_twitter(market_update, idx)
         
         if tweet_id:
             # Save post to DynamoDB
