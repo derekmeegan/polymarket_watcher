@@ -158,7 +158,7 @@ def post_to_twitter(market_update):
         # Return tweet ID
         return True
     except Exception as e:
-        if 'duplicate content' in e:
+        if 'duplicate content' in str(e):
             return True
         print(f"Error posting to Twitter: {e}")
         return None
