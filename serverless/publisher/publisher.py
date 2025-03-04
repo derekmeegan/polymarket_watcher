@@ -130,12 +130,15 @@ def lambda_handler(event, context):
     start_time = time.time()
     
     # Parse event body
-    try:
-        body = json.loads(event.get('body', '{}'))
-        market_updates = body.get('markets', [])
-    except Exception as e:
-        print(f"Error parsing event body: {e}")
-        market_updates = []
+    market_updates = []
+    for record in event.get('Records', []):
+        # Extract the SNS message
+        sns_message_str = record.get('Sns', {}).get('Message', '{}')
+        try:
+            message = json.loads(sns_message_str)
+            market_updates.extend(message.get('markets', []))
+        except Exception as e:
+            print(f"Error parsing SNS message: {e}")
 
     print(f'Captured {len(market_updates)} markets.')
     
