@@ -86,8 +86,7 @@ class PolyMarketStack(Stack):
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
             ]
-        )
-
+        )   
         # Add DynamoDB permissions
         markets_table.grant_read_write_data(lambda_execution_role)
         historical_table.grant_read_write_data(lambda_execution_role)

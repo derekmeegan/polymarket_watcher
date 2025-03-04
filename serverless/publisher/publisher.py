@@ -31,13 +31,12 @@ def get_secret_value(secret_arn):
     """Retrieve a secret value from AWS Secrets Manager"""
     try:
         # Create a Secrets Manager client
-        session = boto3.session.Session()
-        client = session.client(service_name='secretsmanager')
+        client = boto3.client(service_name='secretsmanager', region_name = 'us-east-1')
         
         # Get the secret value
         response = client.get_secret_value(SecretId=secret_arn)
         
-        # Return the secret string
+        # Return the secret string directly (not as JSON)
         return response['SecretString']
     except ClientError as e:
         print(f"Error retrieving secret from Secrets Manager: {e}")
@@ -60,6 +59,7 @@ def get_twitter_credentials():
             print("Failed to retrieve one or more Twitter credentials")
             return None
         
+        # Return the credentials directly
         return {
             'consumer_key': consumer_key,
             'consumer_secret': consumer_secret,
@@ -74,19 +74,32 @@ def get_twitter_client():
     """Initialize and return a Twitter API client"""
     try:
         # Get Twitter credentials from Secrets Manager
+        print(f"Retrieving Twitter credentials from Secrets Manager...")
+        print(f"X_ACCESS_TOKEN_SECRET_ARN: {X_ACCESS_TOKEN_SECRET_ARN}")
+        print(f"X_ACCESS_TOKEN_SECRET_SECRET_ARN: {X_ACCESS_TOKEN_SECRET_SECRET_ARN}")
+        print(f"X_CONSUMER_KEY_SECRET_ARN: {X_CONSUMER_KEY_SECRET_ARN}")
+        print(f"X_CONSUMER_SECRET_SECRET_ARN: {X_CONSUMER_SECRET_SECRET_ARN}")
+        
         credentials = get_twitter_credentials()
         
         if not credentials:
             print("Failed to retrieve Twitter credentials")
             return None
         
+        # Log successful credential retrieval (without exposing the actual values)
+        print("Successfully retrieved all Twitter API credentials")
+        
         # Initialize Twitter API client
-        return tweepy.Client(
+        print("Initializing Twitter API client...")
+        client = tweepy.Client(
             access_token=credentials['access_token'], 
             access_token_secret=credentials['access_token_secret'], 
             consumer_key=credentials['consumer_key'], 
             consumer_secret=credentials['consumer_secret']
         )
+        print("Twitter API client initialized successfully")
+        
+        return client
     except Exception as e:
         print(f"Error initializing Twitter client: {e}")
         return None
