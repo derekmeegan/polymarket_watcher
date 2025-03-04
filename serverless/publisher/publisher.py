@@ -2,37 +2,91 @@
 Polymarket Watcher - Publisher Lambda
 
 This Lambda function publishes market updates to Twitter.
-It runs after the analyzer Lambda when significant changes are detected.
+It is triggered by SNS messages from the analyzer Lambda.
 """
 
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import tweepy
+from decimal import Decimal
+
+import boto3
+from botocore.exceptions import ClientError
 
 from common.config import (
     POSTS_TABLE,
-    TWITTER_API_KEY,
-    TWITTER_API_SECRET,
-    TWITTER_ACCESS_TOKEN,
-    TWITTER_ACCESS_SECRET,
     POLYMARKET_URL
 )
-from common.utils import (
-    get_dynamodb_client,
-    generate_post_text,
-    save_post_to_dynamodb
-)
+from common.utils import save_post_to_dynamodb
+
+# Get Twitter API Secret ARNs from environment
+X_ACCESS_TOKEN_SECRET_ARN = os.environ.get('X_ACCESS_TOKEN_SECRET_ARN', '')
+X_ACCESS_TOKEN_SECRET_SECRET_ARN = os.environ.get('X_ACCESS_TOKEN_SECRET_SECRET_ARN', '')
+X_CONSUMER_KEY_SECRET_ARN = os.environ.get('X_CONSUMER_KEY_SECRET_ARN', '')
+X_CONSUMER_SECRET_SECRET_ARN = os.environ.get('X_CONSUMER_SECRET_SECRET_ARN', '')
+
+def get_secret_value(secret_arn):
+    """Retrieve a secret value from AWS Secrets Manager"""
+    try:
+        # Create a Secrets Manager client
+        session = boto3.session.Session()
+        client = session.client(service_name='secretsmanager')
+        
+        # Get the secret value
+        response = client.get_secret_value(SecretId=secret_arn)
+        
+        # Return the secret string
+        return response['SecretString']
+    except ClientError as e:
+        print(f"Error retrieving secret from Secrets Manager: {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error retrieving secret: {e}")
+        return None
+
+def get_twitter_credentials():
+    """Retrieve Twitter API credentials from AWS Secrets Manager"""
+    try:
+        # Get each credential from its own secret
+        access_token = get_secret_value(X_ACCESS_TOKEN_SECRET_ARN)
+        access_token_secret = get_secret_value(X_ACCESS_TOKEN_SECRET_SECRET_ARN)
+        consumer_key = get_secret_value(X_CONSUMER_KEY_SECRET_ARN)
+        consumer_secret = get_secret_value(X_CONSUMER_SECRET_SECRET_ARN)
+        
+        # Check if all credentials were retrieved successfully
+        if not all([access_token, access_token_secret, consumer_key, consumer_secret]):
+            print("Failed to retrieve one or more Twitter credentials")
+            return None
+        
+        return {
+            'consumer_key': consumer_key,
+            'consumer_secret': consumer_secret,
+            'access_token': access_token,
+            'access_token_secret': access_token_secret
+        }
+    except Exception as e:
+        print(f"Error retrieving Twitter credentials: {e}")
+        return None
 
 def get_twitter_client():
     """Initialize and return a Twitter API client"""
     try:
-        # Initialize Twitter API client
-        auth = tweepy.OAuthHandler(TWITTER_API_KEY, TWITTER_API_SECRET)
-        auth.set_access_token(TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+        # Get Twitter credentials from Secrets Manager
+        credentials = get_twitter_credentials()
         
-        return tweepy.API(auth)
+        if not credentials:
+            print("Failed to retrieve Twitter credentials")
+            return None
+        
+        # Initialize Twitter API client
+        return tweepy.Client(
+            access_token=credentials['access_token'], 
+            access_token_secret=credentials['access_token_secret'], 
+            consumer_key=credentials['consumer_key'], 
+            consumer_secret=credentials['consumer_secret']
+        )
     except Exception as e:
         print(f"Error initializing Twitter client: {e}")
         return None
@@ -59,12 +113,12 @@ def post_to_twitter(market_update):
             return None
         
         # Post to Twitter
-        tweet = twitter.update_status(post_text)
+        tweet = twitter.create_tweet(text = post_text)
         
         print(f"Posted to Twitter: {post_text}")
         
         # Return tweet ID
-        return tweet.id_str
+        return tweet.id
     except Exception as e:
         print(f"Error posting to Twitter: {e}")
         return None

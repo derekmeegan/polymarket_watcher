@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import time
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -167,32 +168,45 @@ def get_previous_price(market_id, outcome_index, table_name=MARKETS_TABLE):
         print(f"Error getting previous price from DynamoDB: {e}")
         return None
 
-def save_post_to_dynamodb(market_id, post_id, post_text, table_name=POSTS_TABLE):
+def save_post_to_dynamodb(market_id, tweet_id):
     """
-    Save a post to DynamoDB
+    Save a post record to DynamoDB
+    
+    Args:
+        market_id: ID of the market that was posted about
+        tweet_id: ID of the tweet that was posted
+        
+    Returns:
+        The DynamoDB item that was created
     """
     try:
         # Initialize DynamoDB
         dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(table_name)
+        table = dynamodb.Table(POSTS_TABLE)
         
-        timestamp = datetime.utcnow().isoformat()
+        # Generate a unique post ID
+        post_id = f"post_{int(time.time())}_{market_id}"
         
-        # Create item
-        item = {
-            'id': market_id,
-            'post_id': post_id,
-            'post_text': post_text,
-            'timestamp': timestamp,
-            'ttl': int((datetime.utcnow() + timedelta(days=90)).timestamp())  # 90 day TTL
+        # Current timestamp
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        # Create post record
+        post_item = {
+            'id': post_id,
+            'market_id': market_id,
+            'tweet_id': tweet_id,
+            'posted_at': timestamp
         }
         
         # Save to DynamoDB
-        table.put_item(Item=item)
-        return True
+        table.put_item(Item=post_item)
+        
+        print(f"Saved post record to DynamoDB: {post_id}")
+        
+        return post_item
     except Exception as e:
         print(f"Error saving post to DynamoDB: {e}")
-        return False
+        return None
 
 def get_last_post_time(market_id=None, table_name=POSTS_TABLE):
     """

@@ -8,25 +8,28 @@ It runs after the collector Lambda and triggers the publisher Lambda when signif
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
+import concurrent.futures
 
 from common.config import (
     MARKETS_TABLE,
     HISTORICAL_TABLE,
-    POSTS_TABLE,
-    MIN_POST_INTERVAL,
-    MAX_POSTS_PER_DAY
+    POSTS_TABLE
 )
+
 from common.utils import (
     get_dynamodb_client,
     calculate_price_change,
     get_volatility_threshold,
     get_last_post_time
 )
+
+# Get SNS topic ARN from environment
+MARKET_MOVEMENTS_TOPIC_ARN = os.environ.get('MARKET_MOVEMENTS_TOPIC_ARN')
 
 def get_current_markets():
     """Get all markets from DynamoDB"""
@@ -36,46 +39,124 @@ def get_current_markets():
         table = dynamodb.Table(MARKETS_TABLE)
         
         # Scan the table to get all markets
+        items = []
         response = table.scan()
+        items.extend(response.get('Items', []))
         
-        return response.get('Items', [])
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            items.extend(response.get('Items', []))
+        
+        return items
     except Exception as e:
         print(f"Error getting markets from DynamoDB: {e}")
         return []
 
-def get_historical_prices(market_id, hours=24):
-    """Get historical prices for a market from the last 24 hours"""
+def get_all_historical_prices_batch(market_ids, hours=6):
+    """
+    Get historical prices for multiple markets in batch
+    Returns a dictionary mapping market_id to its historical prices
+    
+    Args:
+        market_ids: List of market IDs to get historical prices for
+        hours: Number of hours to look back (default: 6)
+    """
     try:
         # Initialize DynamoDB
         dynamodb = get_dynamodb_client()
         table = dynamodb.Table(HISTORICAL_TABLE)
         
-        # Calculate timestamp for 24 hours ago
-        timestamp_24h_ago = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        # Calculate timestamp for 6 hours ago
+        timestamp_six_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
         
-        # Query historical prices
-        response = table.query(
-            KeyConditionExpression=Key('id').eq(market_id) & Key('timestamp').gt(timestamp_24h_ago)
+        # Store results for each market
+        results = {}
+        
+        # Process in batches to avoid excessive memory usage
+        batch_size = 25
+        for i in range(0, len(market_ids), batch_size):
+            batch_ids = market_ids[i:i+batch_size]
+            
+            # Use ThreadPoolExecutor for parallel queries
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_market = {
+                    executor.submit(
+                        table.query,
+                        KeyConditionExpression=Key('market_id').eq(mid) & Key('timestamp').gt(timestamp_six_hours_ago)
+                    ): mid for mid in batch_ids
+                }
+                
+                for future in concurrent.futures.as_completed(future_to_market):
+                    market_id = future_to_market[future]
+                    try:
+                        response = future.result()
+                        results[market_id] = response.get('Items', [])
+                    except Exception as e:
+                        print(f"Error querying historical prices for market {market_id}: {e}")
+                        results[market_id] = []
+        
+        return results
+    except Exception as e:
+        print(f"Error in batch historical price retrieval: {e}")
+        return {}
+
+def get_recently_posted_markets(hours=6):
+    """Get list of market IDs that have been posted about recently"""
+    try:
+        dynamodb = get_dynamodb_client()
+        table = dynamodb.Table(POSTS_TABLE)
+        
+        # Calculate timestamp for hours ago
+        timestamp_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        
+        # Scan for recent posts
+        response = table.scan(
+            FilterExpression=Attr('posted_at').gt(timestamp_hours_ago)
         )
         
-        return response.get('Items', [])
+        # Extract market IDs
+        market_ids = [item.get('market_id') for item in response.get('Items', [])]
+        
+        # Handle pagination if needed
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression=Attr('posted_at').gt(timestamp_hours_ago),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            market_ids.extend([item.get('market_id') for item in response.get('Items', [])])
+        
+        return market_ids
     except Exception as e:
-        print(f"Error getting historical prices from DynamoDB: {e}")
+        print(f"Error getting recently posted markets: {e}")
         return []
 
 def detect_significant_changes(markets):
     """Detect markets with significant price changes"""
     significant_changes = []
     
+    # Get recently posted markets to avoid duplicates
+    recently_posted = get_recently_posted_markets()
+    
+    # Extract market IDs for batch processing
+    market_ids = [market.get('id') for market in markets if market.get('id')]
+    
+    # Get historical prices for all markets in batch
+    historical_prices_by_market = get_all_historical_prices_batch(market_ids)
+    
     for market in markets:
         market_id = market.get('id')
+        
+        # Skip if this market was recently posted about
+        if market_id in recently_posted:
+            continue
+            
         current_price = float(market.get('current_price', 0))
         liquidity = float(market.get('liquidity', 0))
         outcome_index = market.get('outcome_index')
         tracked_outcome = market.get('tracked_outcome')
         
-        # Get historical prices
-        historical_prices = get_historical_prices(market_id)
+        # Get historical prices for this market
+        historical_prices = historical_prices_by_market.get(market_id, [])
         
         # Filter historical prices for the same outcome
         historical_prices = [
@@ -119,95 +200,58 @@ def detect_significant_changes(markets):
     
     return significant_changes
 
-def can_post_update():
-    """
-    Check if we can post an update based on:
-    1. Time since last post (MIN_POST_INTERVAL)
-    2. Number of posts in the last 24 hours (MAX_POSTS_PER_DAY)
-    """
-    # Get the timestamp of the last post
-    last_post_time = get_last_post_time()
+def publish_top_movers_to_sns(significant_changes, max_markets=3):
+    """Publish top market movers to SNS topic"""
+    if not significant_changes:
+        print("No significant changes to publish")
+        return False
     
-    if last_post_time:
-        # Convert to datetime
-        last_post_dt = datetime.fromisoformat(last_post_time)
-        
-        # Check if enough time has passed since the last post
-        time_since_last_post = datetime.utcnow() - last_post_dt
-        if time_since_last_post.total_seconds() < MIN_POST_INTERVAL:
-            print(f"Not enough time since last post ({time_since_last_post.total_seconds()} seconds)")
-            return False
+    # Take top N markets
+    top_movers = significant_changes[:max_markets]
     
-    # Check number of posts in the last 24 hours
     try:
-        # Initialize DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(POSTS_TABLE)
+        # Initialize SNS client
+        sns = boto3.client('sns')
         
-        # Calculate timestamp for 24 hours ago
-        timestamp_24h_ago = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        # Create message
+        message = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'markets': top_movers
+        }
         
-        # Scan for posts in the last 24 hours
-        response = table.scan(
-            FilterExpression=Attr('timestamp').gt(timestamp_24h_ago)
+        # Publish to SNS topic
+        response = sns.publish(
+            TopicArn=MARKET_MOVEMENTS_TOPIC_ARN,
+            Message=json.dumps(message),
+            Subject='Polymarket Top Movers'
         )
         
-        posts_24h = response.get('Items', [])
-        
-        if len(posts_24h) >= MAX_POSTS_PER_DAY:
-            print(f"Reached maximum posts per day ({MAX_POSTS_PER_DAY})")
-            return False
+        print(f"Published top movers to SNS: {response['MessageId']}")
+        return True
     except Exception as e:
-        print(f"Error checking post count: {e}")
-        # In case of error, allow posting
-    
-    return True
+        print(f"Error publishing to SNS: {e}")
+        return False
 
 def lambda_handler(event, context):
     """AWS Lambda handler function"""
-    print("Starting Polymarket Watcher Analyzer")
+    print("Starting market analysis...")
     
-    start_time = time.time()
-    
-    # Get current markets from DynamoDB
+    # Get all markets from DynamoDB
     markets = get_current_markets()
-    
-    if not markets:
-        return {
-            'statusCode': 200,
-            'body': json.dumps({
-                'message': 'No markets found in DynamoDB'
-            })
-        }
-    
-    print(f"Analyzing {len(markets)} markets")
+    print(f"Retrieved {len(markets)} markets from DynamoDB")
     
     # Detect significant changes
     significant_changes = detect_significant_changes(markets)
-    
     print(f"Detected {len(significant_changes)} markets with significant changes")
     
-    # Check if we can post an update
-    can_post = can_post_update()
-    
-    # Prepare response
-    market_updates = []
-    
-    if significant_changes and can_post:
-        # Take the top significant change
-        market_updates = [significant_changes[0]]
-        
-        print(f"Selected market for posting: {market_updates[0]['question']}")
-    
-    execution_time = time.time() - start_time
+    # Publish top movers to SNS
+    if significant_changes:
+        publish_top_movers_to_sns(significant_changes)
     
     return {
         'statusCode': 200,
         'body': json.dumps({
-            'message': f'Analyzed {len(markets)} markets, found {len(significant_changes)} significant changes',
-            'can_post': can_post,
-            'market_updates': market_updates,
-            'execution_time': f'{execution_time:.2f} seconds'
+            'message': f"Analyzed {len(markets)} markets, found {len(significant_changes)} with significant changes"
         })
     }
 

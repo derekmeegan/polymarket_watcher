@@ -16,10 +16,11 @@ HISTORICAL_TABLE = os.environ.get('HISTORICAL_TABLE', 'polymarket-historical')
 POSTS_TABLE = os.environ.get('POSTS_TABLE', 'polymarket-posts')
 
 # Twitter API Credentials
-TWITTER_API_KEY = os.environ.get('TWITTER_API_KEY', '')
-TWITTER_API_SECRET = os.environ.get('TWITTER_API_SECRET', '')
-TWITTER_ACCESS_TOKEN = os.environ.get('TWITTER_ACCESS_TOKEN', '')
-TWITTER_ACCESS_SECRET = os.environ.get('TWITTER_ACCESS_SECRET', '')
+# Now handled via environment variables in the publisher Lambda
+
+# Posting Configuration
+MAX_POSTS_PER_DAY = 100  # Maximum number of posts per 24 hours
+MIN_POST_INTERVAL = 15 * 60  # Minimum seconds between posts (15 minutes)
 
 # Market Tracking
 MIN_LIQUIDITY = 1000  # Minimum liquidity for a market to be tracked
@@ -57,10 +58,6 @@ LIQUIDITY_VOLATILITY_ADJUSTMENTS = {
     }
 }
 
-# Post Rate Limiting
-MIN_POST_INTERVAL = 3600  # Minimum time between posts (in seconds)
-MAX_POSTS_PER_DAY = 10    # Maximum number of posts per day
-
 # TTL for DynamoDB items (in days)
 TTL_DAYS = {
     'markets': 30,
@@ -84,7 +81,7 @@ CATEGORIES_OF_INTEREST = {
         'twitter', 'x', 'amazon', 'tesla'
     ],
     'Finance': [
-        'stock', 'market', 'finance', 'economy', 'recession', 'inflation',
+        'stock', 'finance', 'economy', 'recession', 'inflation',
         'fed', 'federal reserve', 'interest rate', 'gdp', 'dow', 'nasdaq', 's&p'
     ],
     'Sports': [

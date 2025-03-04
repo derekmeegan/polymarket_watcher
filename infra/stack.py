@@ -8,12 +8,16 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_ecr_assets as ecr_assets,
     aws_apigateway as apigateway,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subscriptions,
     RemovalPolicy,
     Stack,
-    Duration
+    Duration,
+    StringParameter
 )
 from aws_cdk.aws_lambda_python_alpha import PythonFunction
 from aws_cdk.aws_s3 import Bucket
+from aws_cdk.aws_lambda import BundlingOptions
 from constructs import Construct
 
 
@@ -21,19 +25,34 @@ class PolyMarketStack(Stack):
     def __init__(self, scope: Construct, id: str, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
 
-        # groq_api_secret = secretsmanager.Secret.from_secret_name_v2(
-        #     self,
-        #     "GroqApiKeySecret",
-        #     "IRWorkflow/GroqApiKey"
-        # )
-
-        # # Twitter API credentials secret
-        # twitter_api_secret = secretsmanager.Secret(
-        #     self,
-        #     "TwitterApiSecret",
-        #     secret_name="PolymarketWatcher/TwitterApiCredentials",
-        #     description="Twitter API credentials for Polymarket Watcher"
-        # )
+        # x API credentials secrets
+        x_access_token_secret = secretsmanager.Secret(
+            self,
+            "XAccessTokenSecret",
+            secret_name="polymarket/x-access-token",
+            description="X API Access Token for Polymarket Watcher"
+        )
+        
+        x_access_token_secret_secret = secretsmanager.Secret(
+            self,
+            "XAccessTokenSecretSecret",
+            secret_name="polymarket/x-access-token-secret",
+            description="X API Access Token Secret for Polymarket Watcher"
+        )
+        
+        x_consumer_key_secret = secretsmanager.Secret(
+            self,
+            "XConsumerKeySecret",
+            secret_name="polymarket/x-consumer-key",
+            description="X API Consumer Key for Polymarket Watcher"
+        )
+        
+        x_consumer_secret_secret = secretsmanager.Secret(
+            self,
+            "XConsumerSecretSecret",
+            secret_name="polymarket/x-consumer-secret",
+            description="X API Consumer Secret for Polymarket Watcher"
+        )
 
         # DynamoDB Tables
         markets_table = dynamodb.Table(
@@ -57,44 +76,16 @@ class PolyMarketStack(Stack):
             time_to_live_attribute="ttl"
         )
 
-        # posts_table = dynamodb.Table(
-        #     self,
-        #     "PostsTable",
-        #     table_name="PolymarketPosts",
-        #     partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.NUMBER),
-        #     sort_key=dynamodb.Attribute(name="posted_at", type=dynamodb.AttributeType.STRING),
-        #     removal_policy=RemovalPolicy.DESTROY,
-        #     billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-        #     time_to_live_attribute="ttl"
-        # )
-
-        # manager_function = PythonFunction(
-        #     self,
-        #     "ManagerFunction",
-        #     entry="../serverless/manager",
-        #     index="manager.py",
-        #     handler="lambda_handler",
-        #     runtime=lambda_.Runtime.PYTHON_3_9,
-        #     timeout=Duration.seconds(60 * 15),
-        #     environment={
-        #         "TABLE_NAME": market_table.table_name,
-        #         "WORKER_IMAGE_URI": "worker_image_asset.image_uri",
-        #         "WORKER_EXECUTION_ROLE": "worker_lambda_execution_role.role_arn",
-        #         "HISTORICAL_TABLE": historical_table.table_name,
-        #         "CONFIG_TABLE": "config_table.table_name",
-        #         "MESSAGES_TABLE": "messages_table.table_name",
-        #         "AWS_ACCOUNT_ID": self.account,
-        #         "GROQ_API_SECRET_ARN": groq_api_secret.secret_arn, 
-        #         "DISCORD_WEBHOOK_SECRET_ARN": "discord_webhook_url.secret_arn",
-        #         "INSTANCE_PROFILE": "instance_profile.ref",
-        #         "SUBNET_ID": "vpc.public_subnets[0].subnet_id",
-        #         "INSTANCE_SECURITY_GROUP": "instance_sg.security_group_id",
-        #         "ARTIFACT_BUCKET": "artifact_bucket.bucket_name",
-        #     },
-        # )
-
-        # market_table.grant_read_data(manager_function)
-        # market_table.grant_write_data(manager_function)
+        posts_table = dynamodb.Table(
+            self,
+            "PostsTable",
+            table_name="PolymarketPosts",
+            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.NUMBER),
+            sort_key=dynamodb.Attribute(name="posted_at", type=dynamodb.AttributeType.STRING),
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="ttl"
+        )
 
         # Lambda execution role with permissions
         lambda_execution_role = iam.Role(
@@ -109,10 +100,13 @@ class PolyMarketStack(Stack):
         # Add DynamoDB permissions
         markets_table.grant_read_write_data(lambda_execution_role)
         historical_table.grant_read_write_data(lambda_execution_role)
-        # posts_table.grant_read_write_data(lambda_execution_role)
+        posts_table.grant_read_write_data(lambda_execution_role)
 
         # Add Secrets Manager permissions
-        # twitter_api_secret.grant_read(lambda_execution_role)
+        x_access_token_secret.grant_read(lambda_execution_role)
+        x_access_token_secret_secret.grant_read(lambda_execution_role)
+        x_consumer_key_secret.grant_read(lambda_execution_role)
+        x_consumer_secret_secret.grant_read(lambda_execution_role)
 
         # Collector Lambda
         collector_lambda = PythonFunction(
@@ -131,41 +125,59 @@ class PolyMarketStack(Stack):
             }
         )
 
+        # Create SNS Topic for market movement events
+        market_movements_topic = sns.Topic(
+            self,
+            "MarketMovementsTopic",
+            display_name="Market Movements Topic",
+            topic_name="PolymarketMovements"
+        )
+
         # Analyzer Lambda
-        # analyzer_lambda = PythonFunction(
-        #     self,
-        #     "AnalyzerFunction",
-        #     entry="../serverless",
-        #     index="analyzer/analyzer.py",
-        #     handler="lambda_handler",
-        #     runtime=lambda_.Runtime.PYTHON_3_9,
-        #     timeout=Duration.seconds(60),
-        #     memory_size=256,
-        #     role=lambda_execution_role,
-        #     environment={
-        #         "MARKETS_TABLE": markets_table.table_name,
-        #         "HISTORICAL_TABLE": historical_table.table_name,
-        #         "POSTS_TABLE": posts_table.table_name
-        #     }
-        # )
+        analyzer_lambda = PythonFunction(
+            self,
+            "AnalyzerFunction",
+            entry="../serverless",
+            index="analyzer/analyzer.py",
+            handler="lambda_handler",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            timeout=Duration.seconds(60),
+            memory_size=256,
+            role=lambda_execution_role,
+            environment={
+                "MARKETS_TABLE": markets_table.table_name,
+                "HISTORICAL_TABLE": historical_table.table_name,
+                "POSTS_TABLE": posts_table.table_name,
+                "MARKET_MOVEMENTS_TOPIC_ARN": market_movements_topic.topic_arn
+            }
+        )
+        market_movements_topic.grant_publish(analyzer_lambda)
 
-        # # Publisher Lambda
-        # publisher_lambda = PythonFunction(
-        #     self,
-        #     "PublisherFunction",
-        #     entry="../serverless",
-        #     index="publisher/publisher.py",
-        #     handler="lambda_handler",
-        #     runtime=lambda_.Runtime.PYTHON_3_9,
-        #     timeout=Duration.seconds(60),
-        #     memory_size=256,
-        #     role=lambda_execution_role,
-        #     environment={
-        #         "POSTS_TABLE": posts_table.table_name,
-        #         "TWITTER_SECRET_ARN": twitter_api_secret.secret_arn
-        #     }
-        # )
-
+        publisher_lambda = PythonFunction(
+            self,
+            "PublisherFunction",
+            entry="../serverless",
+            index="publisher/publisher.py",
+            handler="lambda_handler",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            timeout=Duration.seconds(120),
+            memory_size=256,
+            role=lambda_execution_role,
+            environment={
+                "MARKETS_TABLE": markets_table.table_name,
+                "HISTORICAL_TABLE": historical_table.table_name,
+                "POSTS_TABLE": posts_table.table_name,
+                "X_ACCESS_TOKEN_SECRET_ARN": x_access_token_secret.secret_arn,
+                "X_ACCESS_TOKEN_SECRET_SECRET_ARN": x_access_token_secret_secret.secret_arn,
+                "X_CONSUMER_KEY_SECRET_ARN": x_consumer_key_secret.secret_arn,
+                "X_CONSUMER_SECRET_SECRET_ARN": x_consumer_secret_secret.secret_arn
+            }
+        )
+        
+        # Subscribe publisher to SNS topic
+        market_movements_topic.add_subscription(
+            sns_subscriptions.LambdaSubscription(publisher_lambda)
+        )
 
         # Schedule for Collector Lambda (every 5 minutes)
         collector_schedule = events.Rule(
@@ -175,13 +187,13 @@ class PolyMarketStack(Stack):
             targets=[targets.LambdaFunction(collector_lambda)]
         )
 
-        # # Schedule for Analyzer Lambda (every 5 minutes, slightly offset)
-        # analyzer_schedule = events.Rule(
-        #     self,
-        #     "AnalyzerSchedule",
-        #     schedule=events.Schedule.rate(Duration.minutes(5)),
-        #     targets=[targets.LambdaFunction(analyzer_lambda)]
-        # )
+        # Schedule for Analyzer Lambda (every 15 minutes)
+        analyzer_schedule = events.Rule(
+            self,
+            "AnalyzerSchedule",
+            schedule=events.Schedule.rate(Duration.minutes(15)),
+            targets=[targets.LambdaFunction(analyzer_lambda)]
+        )
 
         # API Gateway for manual triggering
         # api = apigateway.RestApi(

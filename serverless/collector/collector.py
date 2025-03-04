@@ -39,8 +39,8 @@ def fetch_markets(limit=100, active=True):
             'active': active,
             'ascending': False,
             'end_date_min': (datetime.now(timezone.utc) - timedelta(days=3)).strftime('%Y-%m-%d'),
-            'liquidity_num_min': 1_000,
-            'volume_num_min': 10_000
+            'liquidity_num_min': 5_000,
+            'volume_num_min': 20_000
         }
         
         try:
