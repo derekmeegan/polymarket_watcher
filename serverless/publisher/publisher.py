@@ -200,7 +200,7 @@ def lambda_handler(event, context):
         
         if post_successful:
             # Save post to DynamoDB
-            post_record = save_post_to_dynamodb(market_update['id'], post_content)
+            post_record = save_post_to_dynamodb(market_update['id'], post_content, idx)
             
             posts_made.append({
                 'market_id': market_update['id'],
