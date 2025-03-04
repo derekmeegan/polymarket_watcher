@@ -4,3 +4,5 @@ venv
 */cdk.out/*
 */__pycache__
 *.ipynb
+z.py
+run_local.py
