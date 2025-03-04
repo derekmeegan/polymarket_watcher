@@ -7,7 +7,7 @@ It runs after the collector Lambda and triggers the publisher Lambda when signif
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from pytz import timezone
 
 import boto3
@@ -74,7 +74,7 @@ def get_all_historical_prices_batch(market_ids, hours=6):
         table = dynamodb.Table(HISTORICAL_TABLE)
         
         # Calculate timestamp for 6 hours ago
-        timestamp_six_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        timestamp_six_hours_ago = (datetime.now(datetime_timezone) - timedelta(hours=hours)).isoformat()
         
         # Store results for each market
         results = {}
@@ -114,7 +114,7 @@ def get_recently_posted_markets(hours=6):
         table = dynamodb.Table(POSTS_TABLE)
         
         # Calculate timestamp for hours ago
-        timestamp_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        timestamp_hours_ago = (datetime.now(datetime_timezone) - timedelta(hours=hours)).isoformat()
         
         # Scan for recent posts
         response = table.scan(
@@ -222,7 +222,7 @@ def publish_top_movers_to_sns(significant_changes, max_markets=10):
         
         # Create message
         message = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'timestamp': datetime.now(datetime_timezone).isoformat(),
             'markets': top_movers
         }
         
