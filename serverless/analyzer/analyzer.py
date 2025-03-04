@@ -200,7 +200,7 @@ def detect_significant_changes(markets):
     
     return significant_changes
 
-def publish_top_movers_to_sns(significant_changes, max_markets=3):
+def publish_top_movers_to_sns(significant_changes, max_markets=1):
     """Publish top market movers to SNS topic"""
     if not significant_changes:
         print("No significant changes to publish")
