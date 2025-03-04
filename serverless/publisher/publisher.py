@@ -156,7 +156,7 @@ def post_to_twitter(market_update):
         print(f"Posted to Twitter: {post_text}")
         
         # Return tweet ID
-        return tweet.id
+        return True
     except Exception as e:
         print(f"Error posting to Twitter: {e}")
         return None
