@@ -142,34 +142,6 @@ def get_tracked_outcome_and_price(market):
         max_index = prices.index(max(prices))
         return outcomes[max_index], prices[max_index], max_index
 
-def save_historical_price(market_id, outcome, price, outcome_index, table_name=HISTORICAL_TABLE):
-    """
-    Save a historical price point to DynamoDB
-    """
-    try:
-        # Initialize DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(table_name)
-        
-        timestamp = datetime.now(timezone.utc).isoformat()
-        
-        # Create item
-        item = {
-            'market_id': market_id,
-            'timestamp': timestamp,
-            'outcome': outcome,
-            'outcome_index': outcome_index,
-            'price': Decimal(str(price)),
-            'ttl': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())  # 90 day TTL
-        }
-        
-        # Save to DynamoDB
-        table.put_item(Item=item)
-        return True
-    except Exception as e:
-        print(f"Error saving historical price to DynamoDB: {e}")
-        return False
-
 def get_previous_price(market_id, outcome_index, table_name=MARKETS_TABLE):
     """
     Get the previous price for a market from DynamoDB
@@ -327,43 +299,47 @@ def get_volatility_threshold(liquidity):
             return threshold['change_threshold']
     return VOLATILITY_THRESHOLDS[-1]['change_threshold']
 
-def save_market_to_dynamodb(market):
-    """Save market data to DynamoDB"""
+def batch_write_to_dynamodb(items, table_name):
+    """
+    Batch write items to DynamoDB table
+    
+    Args:
+        items: List of items to write
+        table_name: Name of the table to write to
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if not items:
+        return True
+        
     try:
-        # Get tracked outcome and price
-        tracked_outcome, current_price, outcome_index = get_tracked_outcome_and_price(market)
+        dynamodb = boto3.resource('dynamodb')
         
-        if tracked_outcome is None or current_price is None:
-            return False
-        
-        # Prepare market data for DynamoDB
-        market_item = {
-            'id': market.get('id'),
-            'question': market.get('question'),
-            'slug': market.get('slug'),
-            'description': market.get('description', ''),
-            'liquidity': Decimal(str(market.get('liquidity_num', 0))),
-            'volume': Decimal(str(market.get('volume_num', 0))),
-            'market_start_date':  market.get('startDate'),
-            'market_end_date': market.get('endDate'),
-            'image': market.get('image'),
-            'closed': market.get('closed'),
-            'submitted_by': market.get('submitted_by'),
-            'volume24hr': Decimal(str(market.get('volume24hr'))),
-            'current_price': Decimal(str(current_price)),
-            'tracked_outcome': tracked_outcome,
-            'outcome_index': outcome_index,
-            'categories': categorize_market(market),
-            'last_updated': datetime.now(timezone.utc).isoformat(),
-            'ttl': calculate_ttl(TTL_DAYS['markets'])
-        }
-        
-        # Save to DynamoDB
-        dynamodb = get_dynamodb_client()
-        table = dynamodb.Table(MARKETS_TABLE)
-        table.put_item(Item=market_item)
-        
+        # Process in batches of 25 (DynamoDB batch write limit)
+        for i in range(0, len(items), 25):
+            batch = {
+                table_name: [
+                    {'PutRequest': {'Item': item}} for item in items[i:i+25]
+                ]
+            }
+            
+            response = dynamodb.meta.client.batch_write_item(RequestItems=batch)
+            unprocessed = response.get('UnprocessedItems', {})
+            
+            # Retry unprocessed items
+            retry_count = 0
+            max_retries = 3
+            while unprocessed.get(table_name) and retry_count < max_retries:
+                print(f"Retrying {len(unprocessed[table_name])} unprocessed items...")
+                response = dynamodb.meta.client.batch_write_item(RequestItems=unprocessed)
+                unprocessed = response.get('UnprocessedItems', {})
+                retry_count += 1
+                
+            if unprocessed.get(table_name):
+                print(f"Warning: {len(unprocessed[table_name])} items remained unprocessed after retries")
+                
         return True
     except Exception as e:
-        print(f"Error saving market to DynamoDB: {e}")
+        print(f"Error in batch_write_to_dynamodb: {e}")
         return False

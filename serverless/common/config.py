@@ -21,9 +21,6 @@ TWITTER_API_SECRET = os.environ.get('TWITTER_API_SECRET', '')
 TWITTER_ACCESS_TOKEN = os.environ.get('TWITTER_ACCESS_TOKEN', '')
 TWITTER_ACCESS_SECRET = os.environ.get('TWITTER_ACCESS_SECRET', '')
 
-# Market Fetching
-MARKETS_LIMIT = 100  # Number of markets to fetch per API call
-
 # Market Tracking
 MIN_LIQUIDITY = 1000  # Minimum liquidity for a market to be tracked
 LOW_LIQUIDITY_THRESHOLD = 5000

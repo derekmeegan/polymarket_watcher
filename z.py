@@ -21,7 +21,6 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'server
 # Import common utilities
 from common.config import (
     POLYMARKET_API_URL,
-    MARKETS_LIMIT,
     # CATEGORIES_OF_INTEREST,
     # LIQUIDITY_VOLATILITY_ADJUSTMENTS
 )
@@ -36,7 +35,7 @@ from common.utils import (
 # Create a cache to store previous market prices
 market_cache = {}
 
-def fetch_markets(limit=MARKETS_LIMIT, offset=0, active=True):
+def fetch_markets(limit=100, offset=0, active=True):
     """Fetch markets from Polymarket API"""
     params = {
         'limit': limit,
