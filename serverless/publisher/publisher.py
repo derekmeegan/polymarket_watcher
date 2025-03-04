@@ -158,6 +158,8 @@ def post_to_twitter(market_update):
         # Return tweet ID
         return True
     except Exception as e:
+        if 'duplicate content' in e:
+            return True
         print(f"Error posting to Twitter: {e}")
         return None
 
@@ -197,10 +199,7 @@ def lambda_handler(event, context):
         
         if tweet_id:
             # Save post to DynamoDB
-            post_record = save_post_to_dynamodb(
-                market_update,
-                tweet_id
-            )
+            post_record = save_post_to_dynamodb(market_update)
             
             posts_made.append({
                 'market_id': market_update['id'],

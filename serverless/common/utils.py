@@ -168,7 +168,7 @@ def get_previous_price(market_id, outcome_index, table_name=MARKETS_TABLE):
         print(f"Error getting previous price from DynamoDB: {e}")
         return None
 
-def save_post_to_dynamodb(market_id, tweet_id):
+def save_post_to_dynamodb(market_id):
     """
     Save a post record to DynamoDB
     
@@ -194,7 +194,6 @@ def save_post_to_dynamodb(market_id, tweet_id):
         post_item = {
             'id': post_id,
             'market_id': market_id,
-            'tweet_id': tweet_id,
             'posted_at': timestamp
         }
         
