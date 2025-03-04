@@ -193,7 +193,7 @@ def save_post_to_dynamodb(market_id):
         # Create post record
         post_item = {
             'id': post_id,
-            'market_id': market_id,
+            'market_id': str(market_id),
             'posted_at': timestamp
         }
         

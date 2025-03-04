@@ -199,7 +199,7 @@ def lambda_handler(event, context):
         
         if tweet_id:
             # Save post to DynamoDB
-            post_record = save_post_to_dynamodb(market_update)
+            post_record = save_post_to_dynamodb(market_update['id'])
             
             posts_made.append({
                 'market_id': market_update['id'],
