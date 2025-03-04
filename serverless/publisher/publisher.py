@@ -132,10 +132,12 @@ def lambda_handler(event, context):
     # Parse event body
     try:
         body = json.loads(event.get('body', '{}'))
-        market_updates = body.get('market_updates', [])
+        market_updates = body.get('markets', [])
     except Exception as e:
         print(f"Error parsing event body: {e}")
         market_updates = []
+
+    print(f'Captured {len(market_updates)} markets.')
     
     if not market_updates:
         return {
