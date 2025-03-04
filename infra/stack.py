@@ -21,32 +21,28 @@ class PolyMarketStack(Stack):
         super().__init__(scope, id, **kwargs)
 
         # x API credentials secrets
-        x_access_token_secret = secretsmanager.Secret(
+        x_access_token_secret = secretsmanager.Secret.from_secret_name_v2(
             self,
             "XAccessTokenSecret",
             secret_name="polymarket/x-access-token",
-            description="X API Access Token for Polymarket Watcher"
         )
         
-        x_access_token_secret_secret = secretsmanager.Secret(
+        x_access_token_secret_secret = secretsmanager.Secret.from_secret_name_v2(
             self,
             "XAccessTokenSecretSecret",
             secret_name="polymarket/x-access-token-secret",
-            description="X API Access Token Secret for Polymarket Watcher"
         )
         
-        x_consumer_key_secret = secretsmanager.Secret(
+        x_consumer_key_secret = secretsmanager.Secret.from_secret_name_v2(
             self,
             "XConsumerKeySecret",
             secret_name="polymarket/x-consumer-key",
-            description="X API Consumer Key for Polymarket Watcher"
         )
         
-        x_consumer_secret_secret = secretsmanager.Secret(
+        x_consumer_secret_secret = secretsmanager.Secret.from_secret_name_v2(
             self,
             "XConsumerSecretSecret",
             secret_name="polymarket/x-consumer-secret",
-            description="X API Consumer Secret for Polymarket Watcher"
         )
 
         # DynamoDB Tables
