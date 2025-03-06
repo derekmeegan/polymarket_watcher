@@ -188,7 +188,9 @@ def save_post_to_dynamodb(market_id, post_content, idx):
         post_id = f"post_{int(time.time())}_{market_id}"
         
         # Current timestamp
-        timestamp = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        timestamp = now.isoformat()
+        sortable_timestamp = now.strftime("%Y%m%d%H%M%S")
         
         # Create post record
         post_item = {
@@ -196,6 +198,7 @@ def save_post_to_dynamodb(market_id, post_content, idx):
             'content': post_content,
             'market_id': str(market_id),
             'posted_at': timestamp,
+            'sortable_timestamp': sortable_timestamp,
             'posted_automatically': idx == 0
         }
         
