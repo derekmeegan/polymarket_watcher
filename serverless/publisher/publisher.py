@@ -17,9 +17,10 @@ from botocore.exceptions import ClientError
 
 from common.config import (
     POSTS_TABLE,
-    POLYMARKET_URL
+    POLYMARKET_URL,
+    SIGNALS_TABLE
 )
-from common.utils import save_post_to_dynamodb
+from common.utils import save_post_to_dynamodb, get_dynamodb_client
 
 # Get Twitter API Secret ARNs from environment
 # Get Twitter API Secret Names from environment
@@ -49,7 +50,7 @@ def get_secret_value(secret_name):
 def get_twitter_credentials():
     """Retrieve Twitter API credentials from AWS Secrets Manager"""
     try:
-        # Get each credential from its own secret
+        # Get credentials from Secrets Manager
         access_token = get_secret_value(X_ACCESS_TOKEN_SECRET_NAME)
         access_token_secret = get_secret_value(X_ACCESS_TOKEN_SECRET_SECRET_NAME)
         consumer_key = get_secret_value(X_CONSUMER_KEY_SECRET_NAME)
@@ -57,15 +58,15 @@ def get_twitter_credentials():
         
         # Check if all credentials were retrieved successfully
         if not all([access_token, access_token_secret, consumer_key, consumer_secret]):
-            print("Failed to retrieve one or more Twitter credentials")
+            print("Failed to retrieve Twitter API credentials from Secrets Manager")
             return None
         
-        # Return the credentials directly
+        # Return credentials
         return {
-            'consumer_key': consumer_key,
-            'consumer_secret': consumer_secret,
             'access_token': access_token,
-            'access_token_secret': access_token_secret
+            'access_token_secret': access_token_secret,
+            'consumer_key': consumer_key,
+            'consumer_secret': consumer_secret
         }
     except Exception as e:
         print(f"Error retrieving Twitter credentials: {e}")
@@ -74,30 +75,21 @@ def get_twitter_credentials():
 def get_twitter_client():
     """Initialize and return a Twitter API client"""
     try:
-        # Get Twitter credentials from Secrets Manager
-        print(f"Retrieving Twitter credentials from Secrets Manager...")
-        print(f"X_ACCESS_TOKEN_SECRET_NAME: {X_ACCESS_TOKEN_SECRET_NAME}")
-        print(f"X_ACCESS_TOKEN_SECRET_SECRET_NAME: {X_ACCESS_TOKEN_SECRET_SECRET_NAME}")
-        print(f"X_CONSUMER_KEY_SECRET_NAME: {X_CONSUMER_KEY_SECRET_NAME}")
-        print(f"X_CONSUMER_SECRET_SECRET_NAME: {X_CONSUMER_SECRET_SECRET_NAME}")
-        
+        # Get Twitter API credentials
         credentials = get_twitter_credentials()
         
         if not credentials:
-            print("Failed to retrieve Twitter credentials")
+            print("Failed to retrieve Twitter API credentials")
             return None
         
-        # Log successful credential retrieval (without exposing the actual values)
-        print("Successfully retrieved all Twitter API credentials")
-        
-        # Initialize Twitter API client
-        print("Initializing Twitter API client...")
+        # Initialize Twitter client
         client = tweepy.Client(
-            access_token=credentials['access_token'], 
-            access_token_secret=credentials['access_token_secret'], 
-            consumer_key=credentials['consumer_key'], 
-            consumer_secret=credentials['consumer_secret']
+            consumer_key=credentials['consumer_key'],
+            consumer_secret=credentials['consumer_secret'],
+            access_token=credentials['access_token'],
+            access_token_secret=credentials['access_token_secret']
         )
+        
         print("Twitter API client initialized successfully")
         
         return client
@@ -105,11 +97,24 @@ def get_twitter_client():
         print(f"Error initializing Twitter client: {e}")
         return None
 
+def get_confidence_emoji(confidence_score):
+    """Get emoji representation of confidence score"""
+    if confidence_score >= 0.8:
+        return "🔥" # Very high confidence
+    elif confidence_score >= 0.7:
+        return "✅" # High confidence
+    elif confidence_score >= 0.5:
+        return "⚠️" # Medium confidence
+    else:
+        return "❓" # Low confidence
+
 def generate_post_text(market_update, price_change, previous_price, max_length=280):
     """Generate post text for a market update"""
     question = market_update['question']
     current_price = market_update['current_price']
     outcome = market_update['tracked_outcome']
+    confidence_score = market_update.get('confidence_score', 0.5)
+    has_signals = market_update.get('has_signals', False)
     
     # Format price as percentage
     current_pct = f"{current_price * 100:.1f}%"
@@ -117,15 +122,22 @@ def generate_post_text(market_update, price_change, previous_price, max_length=2
     change_direction = "↑" if current_price > previous_price else "↓"
     change_pct = f"{abs(price_change) * 100:.1f}%"
     
+    # Get confidence emoji
+    confidence_emoji = get_confidence_emoji(confidence_score)
+    
     # Truncate question if too long
     max_question_length = 180
     if len(question) > max_question_length:
         question = question[:max_question_length-3] + "..."
     
     # Create post text
-    post_text = f"📊 {question}\n\n"
+    post_text = f"{confidence_emoji} {question}\n\n"
     post_text += f"Outcome: {outcome}\n"
     post_text += f"Price: {current_pct} ({change_direction}{change_pct} from {previous_pct})"
+    
+    # Add signal info if available
+    if has_signals:
+        post_text += f"\nSignal Confidence: {confidence_score:.2f}"
     
     return post_text
 
@@ -205,6 +217,7 @@ def lambda_handler(event, context):
             posts_made.append({
                 'market_id': market_update['id'],
                 'question': market_update['question'],
+                'confidence_score': market_update.get('confidence_score', 0.5)
             })
     
     execution_time = time.time() - start_time
@@ -233,7 +246,9 @@ if __name__ == "__main__":
                     'price_change': 0.5,
                     'liquidity': 50000,
                     'categories': ['Crypto'],
-                    'tracked_outcome': 'Yes'
+                    'tracked_outcome': 'Yes',
+                    'confidence_score': 0.85,
+                    'has_signals': True
                 }
             ]
         })

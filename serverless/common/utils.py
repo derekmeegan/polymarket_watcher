@@ -21,7 +21,10 @@ from .config import (
     MARKETS_TABLE,
     HISTORICAL_TABLE,
     POSTS_TABLE,
-    TTL_DAYS
+    TTL_DAYS,
+    SIGNALS_TABLE,
+    RESOLUTIONS_TABLE,
+    SIGNAL_TYPES
 )
 
 def get_dynamodb_client():
@@ -97,6 +100,48 @@ def calculate_price_change(current_price, previous_price):
         return 0
     
     return abs(float(current_price) - float(previous_price)) / float(previous_price)
+
+def calculate_significant_price_change(current_price, previous_price, min_absolute_change=0.03):
+    """
+    Calculate a significant price change that considers both relative and absolute changes
+    
+    Args:
+        current_price: Current price (0.01-1.00 range)
+        previous_price: Previous price (0.01-1.00 range)
+        min_absolute_change: Minimum absolute change to be considered significant (default: 0.03 or 3%)
+        
+    Returns:
+        A tuple of (is_significant, change_value, change_type)
+        - is_significant: Boolean indicating if the change is significant
+        - change_value: The calculated change value (absolute or relative depending on which was used)
+        - change_type: String indicating which type of change was used ('absolute' or 'relative')
+    """
+    current_price = float(current_price)
+    previous_price = float(previous_price)
+    
+    # Calculate absolute change (in percentage points)
+    absolute_change = abs(current_price - previous_price)
+    
+    # Calculate relative change
+    if previous_price == 0:
+        relative_change = 0
+    else:
+        relative_change = absolute_change / previous_price
+    
+    # For very low prices, prioritize absolute change
+    if previous_price < 0.10:  # For prices below 10%
+        if absolute_change >= min_absolute_change:
+            return (True, absolute_change, 'absolute')
+        return (False, absolute_change, 'absolute')
+    
+    # For mid to high prices, use relative change with a minimum absolute threshold
+    if absolute_change >= min_absolute_change or relative_change >= 0.15:
+        # Return the larger of the two changes
+        if absolute_change > relative_change:
+            return (True, absolute_change, 'absolute')
+        return (True, relative_change, 'relative')
+    
+    return (False, max(absolute_change, relative_change), 'relative')
 
 def parse_outcomes_and_prices(market):
     """Parse outcomes and prices from market data"""
@@ -312,10 +357,153 @@ def get_volatility_threshold(liquidity):
     """
     Get the appropriate volatility threshold based on liquidity
     """
-    for threshold in VOLATILITY_THRESHOLDS:
-        if liquidity >= threshold['min_liquidity']:
-            return threshold['change_threshold']
-    return VOLATILITY_THRESHOLDS[-1]['change_threshold']
+    # Get liquidity tier
+    tier = get_liquidity_tier(liquidity)
+    
+    # Return threshold based on tier
+    return LIQUIDITY_VOLATILITY_ADJUSTMENTS[tier]['threshold']
+
+def calculate_standard_deviation(values):
+    """
+    Calculate standard deviation of a list of values
+    """
+    if not values or len(values) < 2:
+        return 0
+    
+    # Calculate mean
+    mean = sum(values) / len(values)
+    
+    # Calculate sum of squared differences
+    squared_diff_sum = sum((x - mean) ** 2 for x in values)
+    
+    # Calculate standard deviation
+    return (squared_diff_sum / len(values)) ** 0.5
+
+def calculate_z_score(value, mean, std_dev):
+    """
+    Calculate z-score (standard score) of a value
+    """
+    if std_dev == 0:
+        return 0
+    
+    return (value - mean) / std_dev
+
+def get_signal_by_id(signal_id, market_id):
+    """
+    Get a signal by its ID and market ID
+    """
+    try:
+        dynamodb = get_dynamodb_client()
+        table = dynamodb.Table(SIGNALS_TABLE)
+        
+        response = table.get_item(
+            Key={
+                'market_id': market_id,
+                'signal_id': signal_id
+            }
+        )
+        
+        if 'Item' in response:
+            return response['Item']
+        
+        return None
+    except Exception as e:
+        print(f"Error getting signal by ID: {e}")
+        return None
+
+def get_resolution_by_market_id(market_id):
+    """
+    Get resolution data for a market
+    """
+    try:
+        dynamodb = get_dynamodb_client()
+        table = dynamodb.Table(RESOLUTIONS_TABLE)
+        
+        response = table.get_item(
+            Key={'market_id': market_id}
+        )
+        
+        if 'Item' in response:
+            return response['Item']
+        
+        return None
+    except Exception as e:
+        print(f"Error getting resolution by market ID: {e}")
+        return None
+
+def calculate_signal_accuracy_metrics(category=None, liquidity_tier=None):
+    """
+    Calculate accuracy metrics for signals
+    
+    Returns:
+        dict: Dictionary with accuracy metrics
+    """
+    try:
+        dynamodb = get_dynamodb_client()
+        signals_table = dynamodb.Table(SIGNALS_TABLE)
+        
+        # Build filter expression
+        filter_expression = Attr('actual_outcome').exists()
+        
+        if category:
+            filter_expression = filter_expression & Attr('category').eq(category)
+        
+        if liquidity_tier:
+            filter_expression = filter_expression & Attr('liquidity_tier').eq(liquidity_tier)
+        
+        # Query signals with resolutions
+        response = signals_table.scan(
+            FilterExpression=filter_expression
+        )
+        
+        signals = response.get('Items', [])
+        
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = signals_table.scan(
+                FilterExpression=filter_expression,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            signals.extend(response.get('Items', []))
+        
+        # Calculate metrics
+        if not signals:
+            return {
+                'total_signals': 0,
+                'correct_signals': 0,
+                'accuracy': 0,
+                'by_signal_type': {}
+            }
+        
+        total_signals = len(signals)
+        correct_signals = sum(1 for signal in signals if signal.get('was_correct', False))
+        
+        # Calculate accuracy by signal type
+        by_signal_type = {}
+        for signal_type in SIGNAL_TYPES:
+            type_signals = [s for s in signals if s.get('signal_type') == signal_type]
+            if type_signals:
+                type_correct = sum(1 for s in type_signals if s.get('was_correct', False))
+                by_signal_type[signal_type] = {
+                    'total': len(type_signals),
+                    'correct': type_correct,
+                    'accuracy': type_correct / len(type_signals)
+                }
+        
+        return {
+            'total_signals': total_signals,
+            'correct_signals': correct_signals,
+            'accuracy': correct_signals / total_signals if total_signals > 0 else 0,
+            'by_signal_type': by_signal_type
+        }
+    except Exception as e:
+        print(f"Error calculating signal accuracy metrics: {e}")
+        return {
+            'total_signals': 0,
+            'correct_signals': 0,
+            'accuracy': 0,
+            'by_signal_type': {}
+        }
 
 def batch_write_to_dynamodb(items, table_name):
     """

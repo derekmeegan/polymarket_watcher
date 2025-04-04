@@ -3,27 +3,33 @@ Polymarket Watcher - Analyzer Lambda
 
 This Lambda function analyzes market data to detect significant price changes.
 It runs after the collector Lambda and triggers the publisher Lambda when significant changes are detected.
+It also integrates with the signal analyzer to provide enhanced market movement detection.
 """
 
 import json
 import os
 from datetime import datetime, timedelta, timezone
 import pytz
+import uuid
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 import concurrent.futures
+from decimal import Decimal
 
 from common.config import (
     MARKETS_TABLE,
     HISTORICAL_TABLE,
-    POSTS_TABLE
+    POSTS_TABLE,
+    SIGNALS_TABLE,
+    CONFIDENCE_WEIGHTS
 )
 
 from common.utils import (
     get_dynamodb_client,
     calculate_price_change,
-    get_volatility_threshold
+    get_volatility_threshold,
+    calculate_signal_accuracy_metrics
 )
 
 # Get SNS topic ARN from environment
@@ -137,12 +143,45 @@ def get_recently_posted_markets(hours=6):
         print(f"Error getting recently posted markets: {e}")
         return []
 
+def get_recent_signals(hours=6):
+    """Get list of market IDs that have had signals detected recently"""
+    try:
+        dynamodb = get_dynamodb_client()
+        table = dynamodb.Table(SIGNALS_TABLE)
+        
+        # Calculate timestamp for hours ago
+        timestamp_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        
+        # Scan for recent signals
+        response = table.scan(
+            FilterExpression=Attr('detection_timestamp').gt(timestamp_hours_ago)
+        )
+        
+        # Extract market IDs
+        market_ids = [item.get('market_id') for item in response.get('Items', [])]
+        
+        # Handle pagination if needed
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression=Attr('detection_timestamp').gt(timestamp_hours_ago),
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            market_ids.extend([item.get('market_id') for item in response.get('Items', [])])
+        
+        return list(set(market_ids))  # Remove duplicates
+    except Exception as e:
+        print(f"Error getting recent signals: {e}")
+        return []
+
 def detect_significant_changes(markets):
     """Detect markets with significant price changes"""
     significant_changes = []
     
     # Get recently posted markets to avoid duplicates
     recently_posted = get_recently_posted_markets()
+    
+    # Get markets with recent signals
+    recent_signals = get_recent_signals()
     
     # Extract market IDs for batch processing
     market_ids = [market.get('id') for market in markets if market.get('id')]
@@ -187,6 +226,13 @@ def detect_significant_changes(markets):
         # Get appropriate threshold based on liquidity
         threshold = get_volatility_threshold(liquidity)
         
+        # Calculate confidence score
+        confidence_score = 0.5  # Default medium confidence
+        
+        # If this market has recent signals, increase confidence
+        if market_id in recent_signals:
+            confidence_score = 0.7  # Higher confidence for markets with signals
+        
         # If price change exceeds threshold, add to significant changes
         if price_change >= threshold:
             significant_changes.append({
@@ -199,13 +245,59 @@ def detect_significant_changes(markets):
                 'liquidity': liquidity,
                 'categories': market.get('categories', []),
                 'threshold_used': threshold,
-                'tracked_outcome': tracked_outcome
+                'tracked_outcome': tracked_outcome,
+                'confidence_score': confidence_score,
+                'has_signals': market_id in recent_signals
             })
     
-    # Sort by price change (descending)
-    significant_changes.sort(key=lambda x: x['price_change'], reverse=True)
+    # Sort by confidence score (descending) and then price change (descending)
+    significant_changes.sort(key=lambda x: (x['confidence_score'], x['price_change']), reverse=True)
     
     return significant_changes
+
+def save_significant_change_as_signal(market_change):
+    """Save a significant price change as a signal"""
+    try:
+        # Generate a unique signal ID
+        signal_id = f"signal_{uuid.uuid4()}"
+        
+        # Create signal data
+        signal_data = {
+            'market_id': market_change['id'],
+            'signal_id': signal_id,
+            'question': market_change['question'],
+            'signal_type': 'PRICE_JUMP' if market_change['current_price'] > market_change['previous_price'] else 'PRICE_DROP',
+            'signal_strength': 'STRONG' if market_change['price_change'] > 0.15 else 'MODERATE',
+            'time_window': 6,  # Default 6-hour window
+            'current_price': Decimal(str(market_change['current_price'])),
+            'previous_price': Decimal(str(market_change['previous_price'])),
+            'price_change': Decimal(str(market_change['price_change'])),
+            'threshold_used': Decimal(str(market_change['threshold_used'])),
+            'confidence_score': Decimal(str(market_change['confidence_score'])),
+            'liquidity': Decimal(str(market_change['liquidity'])),
+            'categories': market_change['categories'],
+            'tracked_outcome': market_change['tracked_outcome'],
+            'detection_timestamp': datetime.now(timezone.utc).isoformat(),
+            'ttl': int((datetime.now(timezone.utc) + timedelta(days=365)).timestamp())
+        }
+        
+        # Predict outcome based on price movement
+        if market_change['tracked_outcome'] == 'Yes':
+            if market_change['current_price'] > market_change['previous_price']:
+                signal_data['predicted_outcome'] = 'Yes'
+            else:
+                signal_data['predicted_outcome'] = 'No'
+        
+        # Write to DynamoDB
+        dynamodb = get_dynamodb_client()
+        table = dynamodb.Table(SIGNALS_TABLE)
+        
+        response = table.put_item(Item=signal_data)
+        
+        return True
+    except Exception as e:
+        print(f"Error saving significant change as signal: {e}")
+        return False
 
 def publish_top_movers_to_sns(significant_changes, max_markets=10):
     """Publish top market movers to SNS topic"""
@@ -215,6 +307,10 @@ def publish_top_movers_to_sns(significant_changes, max_markets=10):
     
     # Take top N markets
     top_movers = significant_changes[:max_markets]
+    
+    # Save each significant change as a signal
+    for market_change in top_movers:
+        save_significant_change_as_signal(market_change)
     
     try:
         # Initialize SNS client
@@ -259,6 +355,10 @@ def lambda_handler(event, context):
     significant_changes = detect_significant_changes(markets)
     print(f"Detected {len(significant_changes)} markets with significant changes")
     
+    # Get signal accuracy metrics
+    accuracy_metrics = calculate_signal_accuracy_metrics()
+    print(f"Signal accuracy: {accuracy_metrics['accuracy']:.2f} ({accuracy_metrics['correct_signals']}/{accuracy_metrics['total_signals']})")
+    
     # Publish top movers to SNS
     if significant_changes:
         publish_top_movers_to_sns(significant_changes)
@@ -266,7 +366,8 @@ def lambda_handler(event, context):
     return {
         'statusCode': 200,
         'body': json.dumps({
-            'message': f"Analyzed {len(markets)} markets, found {len(significant_changes)} with significant changes"
+            'message': f"Analyzed {len(markets)} markets, found {len(significant_changes)} with significant changes",
+            'signal_accuracy': accuracy_metrics
         })
     }
 

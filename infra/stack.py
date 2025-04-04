@@ -77,6 +77,39 @@ class PolyMarketStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
+        
+        # New tables for enhanced signal detection and resolution tracking
+        signals_table = dynamodb.Table(
+            self,
+            "SignalsTable",
+            table_name="PolymarketSignals",
+            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="signal_id", type=dynamodb.AttributeType.STRING),
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="ttl"
+        )
+        
+        resolutions_table = dynamodb.Table(
+            self,
+            "ResolutionsTable",
+            table_name="PolymarketResolutions",
+            partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="resolution_timestamp", type=dynamodb.AttributeType.STRING),
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="ttl"
+        )
+        
+        thresholds_table = dynamodb.Table(
+            self,
+            "ThresholdsTable",
+            table_name="PolymarketThresholds",
+            partition_key=dynamodb.Attribute(name="threshold_id", type=dynamodb.AttributeType.STRING),
+            removal_policy=RemovalPolicy.DESTROY,
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="ttl"
+        )
 
         # Lambda execution role with permissions
         lambda_execution_role = iam.Role(
@@ -105,6 +138,9 @@ class PolyMarketStack(Stack):
         markets_table.grant_read_write_data(lambda_execution_role)
         historical_table.grant_read_write_data(lambda_execution_role)
         posts_table.grant_read_write_data(lambda_execution_role)
+        signals_table.grant_read_write_data(lambda_execution_role)
+        resolutions_table.grant_read_write_data(lambda_execution_role)
+        thresholds_table.grant_read_write_data(lambda_execution_role)
 
         # Add Secrets Manager permissions
         x_access_token_secret.grant_read(lambda_execution_role)
@@ -152,10 +188,49 @@ class PolyMarketStack(Stack):
                 "MARKETS_TABLE": markets_table.table_name,
                 "HISTORICAL_TABLE": historical_table.table_name,
                 "POSTS_TABLE": posts_table.table_name,
+                "SIGNALS_TABLE": signals_table.table_name,
                 "MARKET_MOVEMENTS_TOPIC_ARN": market_movements_topic.topic_arn
             }
         )
         market_movements_topic.grant_publish(analyzer_lambda)
+        
+        # Signal Analyzer Lambda
+        signal_analyzer_lambda = PythonFunction(
+            self,
+            "SignalAnalyzerFunction",
+            entry="../serverless",
+            index="signal_analyzer/signal_analyzer.py",
+            handler="lambda_handler",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            timeout=Duration.minutes(5),
+            memory_size=256,
+            role=lambda_execution_role,
+            environment={
+                "MARKETS_TABLE": markets_table.table_name,
+                "HISTORICAL_TABLE": historical_table.table_name,
+                "SIGNALS_TABLE": signals_table.table_name,
+                "THRESHOLDS_TABLE": thresholds_table.table_name
+            }
+        )
+        
+        # Resolution Tracker Lambda
+        resolution_tracker_lambda = PythonFunction(
+            self,
+            "ResolutionTrackerFunction",
+            entry="../serverless",
+            index="resolution_tracker/resolution_tracker.py",
+            handler="lambda_handler",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            timeout=Duration.minutes(5),
+            memory_size=256,
+            role=lambda_execution_role,
+            environment={
+                "MARKETS_TABLE": markets_table.table_name,
+                "SIGNALS_TABLE": signals_table.table_name,
+                "RESOLUTIONS_TABLE": resolutions_table.table_name,
+                "THRESHOLDS_TABLE": thresholds_table.table_name
+            }
+        )
 
         # Publisher Lambda
         publisher_lambda = PythonFunction(
@@ -184,7 +259,7 @@ class PolyMarketStack(Stack):
             sns_subscriptions.LambdaSubscription(publisher_lambda)
         )
 
-        # Schedule for Collector Lambda (every 5 minutes)
+        # Schedule for Collector Lambda (every 20 minutes)
         collector_schedule = events.Rule(
             self,
             "CollectorSchedule",
@@ -192,12 +267,28 @@ class PolyMarketStack(Stack):
             targets=[targets.LambdaFunction(collector_lambda)]
         )
 
-        # Schedule for Analyzer Lambda (every 15 minutes)
+        # Schedule for Analyzer Lambda (every 36 minutes)
         analyzer_schedule = events.Rule(
             self,
             "AnalyzerSchedule",
             schedule=events.Schedule.rate(Duration.minutes(36)),
             targets=[targets.LambdaFunction(analyzer_lambda)]
+        )
+        
+        # Schedule for Signal Analyzer Lambda (every 15 minutes)
+        signal_analyzer_schedule = events.Rule(
+            self,
+            "SignalAnalyzerSchedule",
+            schedule=events.Schedule.rate(Duration.minutes(15)),
+            targets=[targets.LambdaFunction(signal_analyzer_lambda)]
+        )
+        
+        # Schedule for Resolution Tracker Lambda (every 60 minutes)
+        resolution_tracker_schedule = events.Rule(
+            self,
+            "ResolutionTrackerSchedule",
+            schedule=events.Schedule.rate(Duration.minutes(60)),
+            targets=[targets.LambdaFunction(resolution_tracker_lambda)]
         )
 
         # API Gateway for manual triggering

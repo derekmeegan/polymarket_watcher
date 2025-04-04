@@ -15,23 +15,33 @@ Polymarket Watcher continuously monitors prediction markets on Polymarket, ident
 - **Rate Limiting**: Controls post frequency to avoid spamming
 - **Market Categorization**: Categorizes markets by topic (Politics, Crypto, Tech, etc.)
 - **Historical Data**: Maintains historical price data for trend analysis
+- **Signal Detection**: Advanced signal detection with adaptive thresholds
+- **Resolution Tracking**: Tracks market resolutions to evaluate signal accuracy
+- **Confidence Scoring**: Assigns confidence scores to detected signals
+- **Feedback Loop**: Uses resolution data to improve signal detection over time
 
 ## Architecture
 
-The application consists of three main Lambda functions:
+The application consists of five main Lambda functions:
 
 1. **Collector**: Fetches market data from Polymarket API and stores it in DynamoDB
 2. **Analyzer**: Analyzes market data to detect significant price changes
-3. **Publisher**: Posts updates about significant price changes to Twitter
+3. **Signal Analyzer**: Detects more sophisticated market signals using adaptive thresholds
+4. **Resolution Tracker**: Tracks market resolutions and evaluates signal accuracy
+5. **Publisher**: Posts updates about significant price changes to Twitter with confidence indicators
 
 ## Data Flow
 
-1. The Collector Lambda runs every 5 minutes to fetch market data from Polymarket
+1. The Collector Lambda runs every 20 minutes to fetch market data from Polymarket
 2. Market data is stored in the `markets` DynamoDB table
 3. Historical price points are stored in the `historical` DynamoDB table
 4. The Analyzer Lambda runs after the Collector to detect significant price changes
-5. When significant changes are detected, the Publisher Lambda is triggered
-6. The Publisher posts updates to Twitter and records the posts in the `posts` DynamoDB table
+5. The Signal Analyzer Lambda runs every 15 minutes to detect more sophisticated signals
+6. Detected signals are stored in the `signals` DynamoDB table
+7. The Resolution Tracker Lambda runs every 60 minutes to track market resolutions
+8. Resolution data is stored in the `resolutions` DynamoDB table and used to update thresholds
+9. When significant changes are detected, the Publisher Lambda is triggered
+10. The Publisher posts updates to Twitter with confidence indicators and records the posts in the `posts` DynamoDB table
 
 ## Configuration
 
@@ -42,6 +52,8 @@ Configuration settings are stored in `serverless/common/config.py`:
 - Twitter API credentials
 - Market fetching parameters
 - Volatility thresholds
+- Signal types and strengths
+- Confidence score weights
 - Post rate limiting
 - Categories of interest
 
@@ -79,6 +91,8 @@ You can test the Lambda functions locally:
 ```bash
 python serverless/collector/collector.py
 python serverless/analyzer/analyzer.py
+python serverless/signal_analyzer/signal_analyzer.py
+python serverless/resolution_tracker/resolution_tracker.py
 python serverless/publisher/publisher.py
 ```
 

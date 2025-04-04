@@ -14,6 +14,9 @@ POLYMARKET_URL = "https://polymarket.com/market"
 MARKETS_TABLE = os.environ.get('MARKETS_TABLE', 'polymarket-markets')
 HISTORICAL_TABLE = os.environ.get('HISTORICAL_TABLE', 'polymarket-historical')
 POSTS_TABLE = os.environ.get('POSTS_TABLE', 'polymarket-posts')
+RESOLUTIONS_TABLE = os.environ.get('RESOLUTIONS_TABLE', 'polymarket-resolutions')
+SIGNALS_TABLE = os.environ.get('SIGNALS_TABLE', 'polymarket-signals')
+THRESHOLDS_TABLE = os.environ.get('THRESHOLDS_TABLE', 'polymarket-thresholds')
 
 # Twitter API Credentials
 # Now handled via environment variables in the publisher Lambda
@@ -62,7 +65,10 @@ LIQUIDITY_VOLATILITY_ADJUSTMENTS = {
 TTL_DAYS = {
     'markets': 30,
     'historical': 90,
-    'posts': 365
+    'posts': 365,
+    'resolutions': 365,
+    'signals': 365,
+    'thresholds': 365
 }
 
 # Categories of Interest
@@ -92,4 +98,40 @@ CATEGORIES_OF_INTEREST = {
         'movie', 'film', 'tv', 'television', 'streaming', 'netflix', 'disney',
         'hbo', 'award', 'oscar', 'emmy', 'grammy', 'actor', 'actress', 'celebrity'
     ]
+}
+
+# Signal Types
+SIGNAL_TYPES = {
+    'PRICE_JUMP': 'Sudden increase in price',
+    'PRICE_DROP': 'Sudden decrease in price',
+    'SUSTAINED_TREND': 'Consistent price movement in one direction',
+    'VOLATILITY_SPIKE': 'Increased price volatility',
+    'VOLUME_SPIKE': 'Unusual trading volume'
+}
+
+# Signal Strength Categories
+SIGNAL_STRENGTH = {
+    'WEAK': {'min': 0.03, 'max': 0.08},
+    'MODERATE': {'min': 0.08, 'max': 0.15},
+    'STRONG': {'min': 0.15, 'max': 0.25},
+    'VERY_STRONG': {'min': 0.25, 'max': 1.0}
+}
+
+# Time Windows for Analysis (in hours)
+TIME_WINDOWS = [1, 6, 24, 168]  # 1h, 6h, 24h, 7d
+
+# Initial Confidence Score Weights
+CONFIDENCE_WEIGHTS = {
+    'magnitude': 0.3,
+    'volume': 0.2,
+    'liquidity': 0.15,
+    'historical_accuracy': 0.25,
+    'time_to_resolution': 0.1
+}
+
+# Resolution Status
+RESOLUTION_STATUS = {
+    'PENDING': 'Market not yet resolved',
+    'RESOLVED': 'Market has been resolved',
+    'CANCELED': 'Market was canceled'
 }
