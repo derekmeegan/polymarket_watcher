@@ -52,7 +52,6 @@ class PolyMarketStack(Stack):
             table_name="PolymarketMarkets",
             partition_key=dynamodb.Attribute(name="id", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
 
@@ -63,7 +62,6 @@ class PolyMarketStack(Stack):
             partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="timestamp", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
 
@@ -74,7 +72,6 @@ class PolyMarketStack(Stack):
             partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="posted_at", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
         
@@ -86,7 +83,6 @@ class PolyMarketStack(Stack):
             partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="signal_id", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
         
@@ -97,7 +93,6 @@ class PolyMarketStack(Stack):
             partition_key=dynamodb.Attribute(name="market_id", type=dynamodb.AttributeType.STRING),
             sort_key=dynamodb.Attribute(name="resolution_timestamp", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
         
@@ -107,7 +102,6 @@ class PolyMarketStack(Stack):
             table_name="PolymarketThresholds",
             partition_key=dynamodb.Attribute(name="threshold_id", type=dynamodb.AttributeType.STRING),
             removal_policy=RemovalPolicy.DESTROY,
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="ttl"
         )
 
